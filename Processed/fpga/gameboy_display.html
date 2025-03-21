@@ -1,0 +1,1006 @@
+<html>
+
+   <head>
+
+      <title>Gameboy Emulator - Picture Processing Unit - Display Output</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="gameboy-emulator---picture-processing-unit---display-output">Gameboy Emulator - Picture Processing Unit - Display Output</h1>
+
+<p>The PPU is the rendering end of the gameboy/gameboy color. It uses  16KB of VRAM (8KB on the original gameboy) to render to a 160x144 pixel LCD.  The unit manages visual data, and renders backgrounds, window and sprites to the screen.</p>
+
+<h2 class="atx" id="vga-output">VGA Output</h2>
+
+<p>To start with this emulation, I want to be able to see the output. Since the FPGA board I'm using has an build in VGA output port, I'd like to be able to render the LCD panel to a VGA monitor. The gameboy LCD refreshes at 59.7275 frames per second, so I should be able to get away with a 60hz standard.</p>
+
+<p>To start I made a basic class to contain timing information:</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">VideoRegion</span><span class="token punctuation">(</span><span class="token builtin">object</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> active<span class="token punctuation">,</span> front_porch<span class="token punctuation">,</span> sync<span class="token punctuation">,</span> back_porch<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>active <span class="token operator">=</span> active
+
+        self<span class="token punctuation">.</span>front_porch <span class="token operator">=</span> front_porch
+
+        self<span class="token punctuation">.</span>sync <span class="token operator">=</span> sync
+
+        self<span class="token punctuation">.</span>back_porch <span class="token operator">=</span> back_porch
+
+
+
+    <span class="token keyword">def</span> <span class="token function">total</span><span class="token punctuation">(</span>self<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">return</span> self<span class="token punctuation">.</span>active <span class="token operator">+</span> self<span class="token punctuation">.</span>front_porch <span class="token operator">+</span> self<span class="token punctuation">.</span>sync <span class="token operator">+</span> self<span class="token punctuation">.</span>back_porch</code></pre>
+
+<p>Then I created an amaranth module which can will keep track of which part of the video we're on. This module can be reused for horizontal and vertical timing. For horizontal timing the pixel clock is used as the input, for the vertical timing the horizontal overflow pulse is used.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">VideoState</span><span class="token punctuation">(</span>enum<span class="token punctuation">.</span>Enum<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">"""
+
+    Represents section of video
+
+    """</span>
+
+    ACTIVE  <span class="token operator">=</span> <span class="token number">0</span> <span class="token comment"># Video is currently sending</span>
+
+    FP      <span class="token operator">=</span> <span class="token number">1</span> <span class="token comment"># Front porch</span>
+
+    SYNC    <span class="token operator">=</span> <span class="token number">2</span> <span class="token comment"># Sync section</span>
+
+    BP      <span class="token operator">=</span> <span class="token number">3</span> <span class="token comment"># Back porch</span>
+
+
+
+<span class="token keyword">class</span> <span class="token class-name">VideoCounter</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token triple-quoted-string string">"""
+
+    Horizontal or vertical video counter
+
+    """</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> region<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>region <span class="token operator">=</span> region
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"clk_en"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token comment"># Pixel clock or horizontal clock</span>
+
+            <span class="token string">"state"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>VideoState<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"ovf"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>total<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        ovf <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> ovf<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>counter <span class="token operator">==</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>total<span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>ovf<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>ovf <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>clk_en<span class="token punctuation">)</span>
+
+
+
+
+
+        <span class="token comment"># Map video section</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>counter <span class="token operator">&lt;</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>back_porch<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>state<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>VideoState<span class="token punctuation">.</span>BP<span class="token punctuation">)</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Elif<span class="token punctuation">(</span>counter <span class="token operator">&lt;</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>back_porch <span class="token operator">+</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>active<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>state<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>VideoState<span class="token punctuation">.</span>ACTIVE<span class="token punctuation">)</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Elif<span class="token punctuation">(</span>counter <span class="token operator">&lt;</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>back_porch <span class="token operator">+</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>active <span class="token operator">+</span> self<span class="token punctuation">.</span>region<span class="token punctuation">.</span>sync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>state<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>VideoState<span class="token punctuation">.</span>FP<span class="token punctuation">)</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>state<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>clk_en<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>ovf<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p>With the region out of the way, I just need a way to stream in data and make sure it aligns with video being sent out. I start with a signature and pixel container:</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">from</span> amaranth<span class="token punctuation">.</span>lib <span class="token keyword">import</span> wiring<span class="token punctuation">,</span> data
+
+<span class="token keyword">from</span> amaranth<span class="token punctuation">.</span>lib<span class="token punctuation">.</span>wiring <span class="token keyword">import</span> In<span class="token punctuation">,</span> Out
+
+
+
+<span class="token keyword">def</span> <span class="token function">pixel_shape</span><span class="token punctuation">(</span>width<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">return</span> data<span class="token punctuation">.</span>StructLayout<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+        <span class="token string">"r"</span><span class="token punctuation">:</span> width<span class="token punctuation">,</span>
+
+        <span class="token string">"g"</span><span class="token punctuation">:</span> width<span class="token punctuation">,</span>
+
+        <span class="token string">"b"</span><span class="token punctuation">:</span> width
+
+    <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+<span class="token keyword">class</span> <span class="token class-name">Stream</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Signature<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> shape<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token builtin">super</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"data"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"valid"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"ready"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"vsync"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span></code></pre>
+
+<p>I start with driver module. It takes a stream of pixels in, and outputs the vga data and sync signals. The polarity flag is used since some resolutions expect a normally on sync, others a normally off sync. Most monitors don't seem to use this polarity anymore, but it's good to have consistent. The pixel division allows us to set the pixel clock as a ratio of the input clock. For example an 800x600 resolution at 60Hz has a 40MHz clock, so we can use a synthesized clock of 120MHz and divide by 3.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">Polarity</span><span class="token punctuation">(</span><span class="token builtin">object</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    POS <span class="token operator">=</span> <span class="token number">0</span>
+
+    NEG <span class="token operator">=</span> <span class="token number">1</span>
+
+
+
+<span class="token keyword">class</span> <span class="token class-name">VgaDriver</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> pix_divide<span class="token punctuation">,</span> 
+
+                        hregion<span class="token punctuation">,</span> 
+
+                        vregion<span class="token punctuation">,</span>
+
+                        polarity <span class="token operator">=</span> Polarity<span class="token punctuation">.</span>POS
+
+                        shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>hregion <span class="token operator">=</span> hregion
+
+        self<span class="token punctuation">.</span>vregion <span class="token operator">=</span> vregion
+
+        self<span class="token punctuation">.</span>pix_divide <span class="token operator">=</span> pix_divide
+
+        self<span class="token punctuation">.</span>polarity <span class="token operator">=</span> polarity
+
+
+
+        <span class="token builtin">super</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>Stream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"data"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">12</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"hsync"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"vsync"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span></code></pre>
+
+<p>The pixel clock division is done using a simple counter.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token comment"># Pixel clock divider</span>
+
+pix_counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>pix_divide<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+pix_clk <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> pix_clk<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_counter <span class="token operator">==</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>pix_counter <span class="token operator">==</span> self<span class="token punctuation">.</span>pix_divide <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> pix_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> pix_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span></code></pre>
+
+<p>Then we can connect to our video region counters:</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token comment"># Horizontal region</span>
+
+hcounter <span class="token operator">=</span> m<span class="token punctuation">.</span>submodules<span class="token punctuation">.</span>hcounter <span class="token operator">=</span> VideoCounter<span class="token punctuation">(</span>self<span class="token punctuation">.</span>hregion<span class="token punctuation">)</span>
+
+
+
+m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> hcounter<span class="token punctuation">.</span>clk_en<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_clk<span class="token punctuation">)</span>
+
+
+
+<span class="token comment"># Vertical region</span>
+
+vcounter <span class="token operator">=</span> m<span class="token punctuation">.</span>submodules<span class="token punctuation">.</span>vcounter <span class="token operator">=</span> VideoCounter<span class="token punctuation">(</span>self<span class="token punctuation">.</span>vregion<span class="token punctuation">)</span>
+
+
+
+m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> vcounter<span class="token punctuation">.</span>clk_en<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>hcounter<span class="token punctuation">.</span>ovf<span class="token punctuation">)</span></code></pre>
+
+<p>Since I want my video output to be aligned with the monitor refresh. To do this I block reading in from the stream if I receive a vsync, and only resume when I entered the sync region on the VGA side.</p>
+
+<pre><code class="fenced-code-block language-python">input_enable <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+video_active <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> video_active<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>
+
+                <span class="token punctuation">(</span>hcounter<span class="token punctuation">.</span>state <span class="token operator">==</span> VideoState<span class="token punctuation">.</span>ACTIVE<span class="token punctuation">)</span> <span class="token operator">&amp;</span>
+
+                <span class="token punctuation">(</span>vcounter<span class="token punctuation">.</span>state <span class="token operator">==</span> VideoState<span class="token punctuation">.</span>ACTIVE<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>input_enable <span class="token operator">&amp;</span> video_active<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_clk<span class="token punctuation">)</span>
+
+
+
+<span class="token comment"># Stop sending at end of frame</span>
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> input_enable<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+<span class="token comment"># Reached end of output frame, data can be send when pixels are active</span>
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>vcounter<span class="token punctuation">.</span>state <span class="token operator">==</span> VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> input_enable<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>video_active <span class="token operator">&amp;</span> input_enable<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token comment"># Top 4 bits of each pixel</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>data<span class="token punctuation">[</span><span class="token number">0</span><span class="token punctuation">:</span><span class="token number">4</span><span class="token punctuation">]</span><span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">.</span>r<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">4</span><span class="token punctuation">:</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>data<span class="token punctuation">[</span><span class="token number">4</span><span class="token punctuation">:</span><span class="token number">8</span><span class="token punctuation">]</span><span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">.</span>g<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">4</span><span class="token punctuation">:</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>data<span class="token punctuation">[</span><span class="token number">8</span><span class="token punctuation">:</span><span class="token number">12</span><span class="token punctuation">]</span><span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">.</span>b<span class="token punctuation">[</span><span class="token operator">-</span><span class="token number">4</span><span class="token punctuation">:</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+
+<span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span></code></pre>
+
+<p>For certain VGA formats, some monitors will check the polarity of the hsync and vsync signals. </p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">if</span> self<span class="token punctuation">.</span>polarity <span class="token operator">==</span> Polarity<span class="token punctuation">.</span>POS<span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>hsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>hcounter<span class="token punctuation">.</span>state <span class="token operator">==</span> VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>vcounter<span class="token punctuation">.</span>state <span class="token operator">==</span> VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span>
+
+<span class="token keyword">else</span><span class="token punctuation">:</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>hsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>hcounter<span class="token punctuation">.</span>state <span class="token operator">!=</span> VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span>
+
+    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>vcounter<span class="token punctuation">.</span>state <span class="token operator">!=</span> VideoState<span class="token punctuation">.</span>SYNC<span class="token punctuation">)</span></code></pre>
+
+<p>I can convert this amaranth module to a vga module.</p>
+
+<pre><code class="fenced-code-block language-python">vga <span class="token operator">=</span> VgaDriver<span class="token punctuation">(</span><span class="token number">3</span><span class="token punctuation">,</span> VideoRegion<span class="token punctuation">(</span><span class="token number">800</span><span class="token punctuation">,</span> <span class="token number">40</span><span class="token punctuation">,</span> <span class="token number">128</span><span class="token punctuation">,</span> <span class="token number">88</span><span class="token punctuation">)</span><span class="token punctuation">,</span> VideoRegion<span class="token punctuation">(</span><span class="token number">600</span><span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">23</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+<span class="token keyword">with</span> <span class="token builtin">open</span><span class="token punctuation">(</span><span class="token string">"build/vga_driver.v"</span><span class="token punctuation">,</span> <span class="token string">"w"</span><span class="token punctuation">)</span> <span class="token keyword">as</span> f<span class="token punctuation">:</span>
+
+    v <span class="token operator">=</span> verilog<span class="token punctuation">.</span>convert<span class="token punctuation">(</span>vga<span class="token punctuation">,</span> name <span class="token operator">=</span> <span class="token string">"vga_driver_svga"</span><span class="token punctuation">)</span>
+
+    f<span class="token punctuation">.</span>write<span class="token punctuation">(</span>v<span class="token punctuation">)</span>
+
+<span class="token keyword">print</span><span class="token punctuation">(</span><span class="token string">"Wrote vga module"</span><span class="token punctuation">)</span></code></pre>
+
+<p>I try to write display drivers with an easy way to set timing configurations. If I was doing a more general purpose display, I would add a bus interface to set registers to change the timing in run-time.</p>
+
+<h2 class="atx" id="rendering-lcd">Rendering LCD</h2>
+
+<p>Since the gameboy's native LCD panel is much smaller than the 800x600 resolution, I am going add some borders and upsample the incoming stream. These become easy when using a nice stream format.</p>
+
+<h3 class="atx" id="vertical-upsample">Vertical upsample</h3>
+
+<p>First I upsample each incoming pixel 4 times we end up with a 640x576 resolution. Upsampling vertically requires storing the incoming video stream for one line. When a line is finished, the buffer is used as the video source N times.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">UpsampleVertical</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> divide <span class="token operator">=</span> <span class="token number">4</span><span class="token punctuation">,</span> width <span class="token operator">=</span> <span class="token number">160</span><span class="token punctuation">,</span> shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>divide <span class="token operator">=</span> divide <span class="token comment"># Multiplies the height of incoming stream</span>
+
+        self<span class="token punctuation">.</span>width <span class="token operator">=</span> width <span class="token comment"># Width of incoming stream</span>
+
+        self<span class="token punctuation">.</span>shape <span class="token operator">=</span> shape <span class="token comment"># Shape of incoming stream data</span>
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"produce"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        sync_flag <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Caches a line of pixels</span>
+
+        line_buffer <span class="token operator">=</span> m<span class="token punctuation">.</span>submodules<span class="token punctuation">.</span><span class="token builtin">buffer</span> <span class="token operator">=</span> memory<span class="token punctuation">.</span>Memory<span class="token punctuation">(</span>shape <span class="token operator">=</span> self<span class="token punctuation">.</span>shape<span class="token punctuation">,</span> depth <span class="token operator">=</span> self<span class="token punctuation">.</span>width<span class="token punctuation">,</span> init <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Write to cache</span>
+
+        write_port <span class="token operator">=</span> line_buffer<span class="token punctuation">.</span>write_port<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        <span class="token comment"># Read from cache</span>
+
+        read_port <span class="token operator">=</span> line_buffer<span class="token punctuation">.</span>read_port<span class="token punctuation">(</span>domain <span class="token operator">=</span> <span class="token string">"comb"</span><span class="token punctuation">)</span>
+
+
+
+        addr <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>width<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        addr_last <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> addr_last<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>addr <span class="token operator">==</span> self<span class="token punctuation">.</span>width <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        line_counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>divide<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        active <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> active<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>line_counter <span class="token operator">==</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token comment"># Capture vsync flag</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> sync_flag<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Only send vsync flag on last line of upsample</span>
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>sync_flag <span class="token operator">&amp;</span> <span class="token punctuation">(</span>line_counter <span class="token operator">==</span> self<span class="token punctuation">.</span>divide <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span> <span class="token operator">&amp;</span> <span class="token punctuation">(</span>addr_last<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> sync_flag<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>addr_last<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> addr<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+                <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>line_counter <span class="token operator">==</span> self<span class="token punctuation">.</span>divide <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> line_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+                <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> line_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>line_counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> addr<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>addr <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>active<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> <span class="token punctuation">[</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span>
+
+            <span class="token punctuation">]</span>
+
+
+
+            <span class="token comment"># Write to buffer</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> write_port<span class="token punctuation">.</span>en<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> write_port<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> write_port<span class="token punctuation">.</span>addr<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>addr<span class="token punctuation">)</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> read_port<span class="token punctuation">.</span>addr<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>addr<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>read_port<span class="token punctuation">.</span>data<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p>To confirm behavior, I use two helper functions to read and write from the streams in the amaranth simulator:</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">stream_put</span><span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> stream<span class="token punctuation">,</span> data<span class="token punctuation">,</span> vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>data<span class="token punctuation">,</span> data<span class="token punctuation">)</span>
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>vsync<span class="token punctuation">,</span> vsync<span class="token punctuation">)</span>
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>valid<span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+    <span class="token keyword">await</span> ctx<span class="token punctuation">.</span>tick<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>until<span class="token punctuation">(</span>stream<span class="token punctuation">.</span>ready<span class="token punctuation">)</span>
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>valid<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+
+
+<span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">stream_get</span><span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> stream<span class="token punctuation">,</span> expect<span class="token punctuation">,</span> vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>ready<span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+    data<span class="token punctuation">,</span> vs <span class="token operator">=</span> <span class="token keyword">await</span> ctx<span class="token punctuation">.</span>tick<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>sample<span class="token punctuation">(</span>stream<span class="token punctuation">.</span>data<span class="token punctuation">,</span> stream<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">.</span>until<span class="token punctuation">(</span>stream<span class="token punctuation">.</span>valid<span class="token punctuation">)</span>
+
+    <span class="token keyword">assert</span> expect <span class="token operator">==</span> data
+
+    <span class="token keyword">assert</span> vs <span class="token operator">==</span> vsync
+
+    ctx<span class="token punctuation">.</span><span class="token builtin">set</span><span class="token punctuation">(</span>stream<span class="token punctuation">.</span>ready<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span></code></pre>
+
+<p>With that I can make sure that for each line in I get the same line back 4 times.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">def</span> <span class="token function">tb_vertical_resample</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    dut <span class="token operator">=</span> UpsampleVertical<span class="token punctuation">(</span><span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">4</span><span class="token punctuation">,</span> shape <span class="token operator">=</span> unsigned<span class="token punctuation">(</span><span class="token number">16</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">write_process</span><span class="token punctuation">(</span>ctx<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">for</span> j <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">4</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                <span class="token keyword">await</span> stream_put<span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> dut<span class="token punctuation">.</span>consume<span class="token punctuation">,</span> j<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">read_process</span><span class="token punctuation">(</span>ctx<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">for</span> j <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">16</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                <span class="token keyword">await</span> stream_get<span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> dut<span class="token punctuation">.</span>produce<span class="token punctuation">,</span> j <span class="token operator">%</span> <span class="token number">4</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+    sim <span class="token operator">=</span> Simulator<span class="token punctuation">(</span>dut<span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_clock<span class="token punctuation">(</span><span class="token number">1e-8</span><span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_testbench<span class="token punctuation">(</span>write_process<span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_testbench<span class="token punctuation">(</span>read_process<span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">with</span> sim<span class="token punctuation">.</span>write_vcd<span class="token punctuation">(</span><span class="token string">"bench/tb_upsample_vertical.vcd"</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        sim<span class="token punctuation">.</span>run_until<span class="token punctuation">(</span><span class="token number">100</span><span class="token operator">*</span><span class="token number">1e-8</span><span class="token punctuation">)</span></code></pre>
+
+<p>Although not the most intense testing, it gives me a baseline of operation. This module could be made a bit simpler by having the incoming stream provide an hsync flag. This would allow the module to not have to internally track pixel position. If I start to have problems with the wider display pipeline, I can return and check finer cases.</p>
+
+<h3 class="atx" id="horizontal-upsample">Horizontal upsample</h3>
+
+<p>The horizontal upsample is a similar process, but instead of needing to cache an entire line I only need to cache one instance of the stream data, as well as the vsync flag.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">UpsampleHorizontal</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> divide<span class="token punctuation">,</span> shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>divide <span class="token operator">=</span> divide
+
+        self<span class="token punctuation">.</span>shape <span class="token operator">=</span> shape
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"produce"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        sync_reg <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        data_reg <span class="token operator">=</span> Signal<span class="token punctuation">(</span>self<span class="token punctuation">.</span>shape<span class="token punctuation">)</span>
+
+
+
+        counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>divide<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Copy data to registers</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> data_reg<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> sync_reg<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Keep track of how many copies of data we have sent</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>counter <span class="token operator">==</span> self<span class="token punctuation">.</span>divide <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>counter <span class="token operator">==</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token comment"># Data from stream</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token comment"># From registers</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>data_reg<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span> <span class="token comment"># Explicit block incoming stream</span>
+
+
+
+        <span class="token comment"># Sync flag on last sampled value</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>counter <span class="token operator">==</span> self<span class="token punctuation">.</span>divide <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>sync_reg<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p> Verifying behavior is similar to vertical upsampling:</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">def</span> <span class="token function">tb_horizontal_resample</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    dut <span class="token operator">=</span> UpsampleHorizontal<span class="token punctuation">(</span><span class="token number">4</span><span class="token punctuation">,</span> shape <span class="token operator">=</span> unsigned<span class="token punctuation">(</span><span class="token number">16</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">write_process</span><span class="token punctuation">(</span>ctx<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">10</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">for</span> j <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">4</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                <span class="token keyword">await</span> stream_put<span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> dut<span class="token punctuation">.</span>consume<span class="token punctuation">,</span> j<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">async</span> <span class="token keyword">def</span> <span class="token function">read_process</span><span class="token punctuation">(</span>ctx<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">for</span> j <span class="token keyword">in</span> <span class="token builtin">range</span><span class="token punctuation">(</span><span class="token number">16</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                <span class="token keyword">await</span> stream_get<span class="token punctuation">(</span>ctx<span class="token punctuation">,</span> dut<span class="token punctuation">.</span>produce<span class="token punctuation">,</span> math<span class="token punctuation">.</span>floor<span class="token punctuation">(</span>j <span class="token operator">/</span> <span class="token number">4</span><span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+    sim <span class="token operator">=</span> Simulator<span class="token punctuation">(</span>dut<span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_clock<span class="token punctuation">(</span><span class="token number">1e-8</span><span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_testbench<span class="token punctuation">(</span>write_process<span class="token punctuation">)</span>
+
+    sim<span class="token punctuation">.</span>add_testbench<span class="token punctuation">(</span>read_process<span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">with</span> sim<span class="token punctuation">.</span>write_vcd<span class="token punctuation">(</span><span class="token string">"bench/tb_upsample_horizontal.vcd"</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        sim<span class="token punctuation">.</span>run_until<span class="token punctuation">(</span><span class="token number">100</span><span class="token operator">*</span><span class="token number">1e-8</span><span class="token punctuation">)</span></code></pre>
+
+<h3 class="atx" id="border">Border</h3>
+
+<p>The gameboy LCD does not evenly fit into my 800x600 display, so I also want to add padding so the graphics are centered on the screen. I can insert fill pixels at the start and end of each line, and each frame.</p>
+
+<p>The vertical border inserts 12 pixels at the start and end of each line. When I have time to loop back to this, I can make this bit more efficient by sharing a counter with the upsampler, and inserting 3 pixels before upsampling. But for now, this is functional.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">VerticalBorder</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> margin <span class="token operator">=</span> <span class="token number">12</span><span class="token punctuation">,</span> width <span class="token operator">=</span> <span class="token number">800</span><span class="token punctuation">,</span> fill <span class="token operator">=</span> <span class="token punctuation">{</span><span class="token string">"r"</span><span class="token punctuation">:</span> <span class="token number">0</span><span class="token punctuation">,</span> <span class="token string">"g"</span><span class="token punctuation">:</span> <span class="token number">0x6</span><span class="token punctuation">,</span> <span class="token string">"b"</span><span class="token punctuation">:</span> <span class="token number">0x6</span><span class="token punctuation">}</span><span class="token punctuation">,</span> shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>margin <span class="token operator">=</span> margin
+
+        self<span class="token punctuation">.</span>width <span class="token operator">=</span> width
+
+        self<span class="token punctuation">.</span>fill <span class="token operator">=</span> Const<span class="token punctuation">(</span>fill<span class="token punctuation">,</span> shape<span class="token punctuation">)</span>
+
+
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"produce"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        fill_pixels <span class="token operator">=</span> <span class="token number">2</span> <span class="token operator">*</span> self<span class="token punctuation">.</span>margin <span class="token operator">*</span> self<span class="token punctuation">.</span>width
+
+        sync_location <span class="token operator">=</span> self<span class="token punctuation">.</span>margin <span class="token operator">*</span> self<span class="token punctuation">.</span>width
+
+
+
+        active <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        pix_counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>fill_pixels<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_counter <span class="token operator">==</span> sync_location <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># When we receive a vsync, start border</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> active<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> pix_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token comment"># Active</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>active<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token comment"># Pass stream through (don't pass vsync)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> <span class="token punctuation">[</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">)</span>
+
+            <span class="token punctuation">]</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token comment"># Fill border</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>fill<span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                <span class="token comment"># How many pixels have been filled</span>
+
+                <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>pix_counter <span class="token operator">==</span> fill_pixels <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> active<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+                    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> pix_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+                <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                    m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> pix_counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>pix_counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p>The horizontal border inserts blank pixels at the start and end of the frame.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">HorizontalBorder</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> margin <span class="token operator">=</span> <span class="token number">80</span><span class="token punctuation">,</span> width <span class="token operator">=</span> <span class="token number">800</span><span class="token punctuation">,</span> fill <span class="token operator">=</span> <span class="token punctuation">{</span><span class="token string">"r"</span><span class="token punctuation">:</span> <span class="token number">0</span><span class="token punctuation">,</span> <span class="token string">"g"</span><span class="token punctuation">:</span> <span class="token number">0x0</span><span class="token punctuation">,</span> <span class="token string">"b"</span><span class="token punctuation">:</span> <span class="token number">0x6</span><span class="token punctuation">}</span><span class="token punctuation">,</span> shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>margin <span class="token operator">=</span> margin
+
+        self<span class="token punctuation">.</span>width <span class="token operator">=</span> width
+
+        self<span class="token punctuation">.</span>fill <span class="token operator">=</span> Const<span class="token punctuation">(</span>fill<span class="token punctuation">,</span> shape<span class="token punctuation">)</span>
+
+
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"produce"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        sync_reg <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        counter <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token builtin">range</span><span class="token punctuation">(</span>self<span class="token punctuation">.</span>width<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+
+
+        active <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        active_start <span class="token operator">=</span> self<span class="token punctuation">.</span>margin
+
+        active_end <span class="token operator">=</span> self<span class="token punctuation">.</span>width <span class="token operator">-</span> self<span class="token punctuation">.</span>margin
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span><span class="token punctuation">(</span>counter <span class="token operator">&gt;=</span> active_start<span class="token punctuation">)</span> <span class="token operator">&amp;</span> <span class="token punctuation">(</span>counter <span class="token operator">&lt;</span> active_end<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> active<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        counter_last <span class="token operator">=</span> Signal<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> counter_last<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>counter <span class="token operator">==</span> self<span class="token punctuation">.</span>width <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>sync_reg <span class="token operator">&amp;</span> counter_last<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> sync_reg<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>counter_last<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+            <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+                m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> counter<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>counter <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready <span class="token operator">&amp;</span> self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>vsync<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>sync <span class="token operator">+=</span> sync_reg<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>If<span class="token punctuation">(</span>active<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> <span class="token punctuation">[</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>data<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>valid<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+                self<span class="token punctuation">.</span>consume<span class="token punctuation">.</span>ready<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>ready<span class="token punctuation">)</span>
+
+            <span class="token punctuation">]</span>
+
+        <span class="token keyword">with</span> m<span class="token punctuation">.</span>Else<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>valid<span class="token punctuation">.</span>eq<span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span>
+
+            m<span class="token punctuation">.</span>d<span class="token punctuation">.</span>comb <span class="token operator">+=</span> self<span class="token punctuation">.</span>produce<span class="token punctuation">.</span>data<span class="token punctuation">.</span>eq<span class="token punctuation">(</span>self<span class="token punctuation">.</span>fill<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p>Here I use the vsync flag coming in to start filling, and produce the vsync when I'm halfway through the border fill. This means that half the fill will be at the bottom of the screen, and then align to the top after the vsync flag is sent.</p>
+
+<p>Both of these modules have to keep track of when to send the vsync flag, because I need it to align to the end of display.</p>
+
+<h2 class="atx" id="putting-it-together">Putting it together</h2>
+
+<p>I made a wrapper which connects together this display pipeline. A 160x144 video stream goes in, and a 800x600 stream comes out.</p>
+
+<pre><code class="fenced-code-block language-python"><span class="token keyword">class</span> <span class="token class-name">Resize</span><span class="token punctuation">(</span>wiring<span class="token punctuation">.</span>Component<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+    <span class="token keyword">def</span> <span class="token function">__init__</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> upsample<span class="token punctuation">,</span> border<span class="token punctuation">,</span> shape <span class="token operator">=</span> signature<span class="token punctuation">.</span>PixelLayout<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        self<span class="token punctuation">.</span>upsample <span class="token operator">=</span> upsample
+
+        self<span class="token punctuation">.</span>border <span class="token operator">=</span> border
+
+        <span class="token builtin">super</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span>__init__<span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+            <span class="token string">"consume"</span><span class="token punctuation">:</span> In<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            <span class="token string">"produce"</span><span class="token punctuation">:</span> Out<span class="token punctuation">(</span>signature<span class="token punctuation">.</span>VideoStream<span class="token punctuation">(</span>shape<span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+    <span class="token keyword">def</span> <span class="token function">elaborate</span><span class="token punctuation">(</span>self<span class="token punctuation">,</span> platform<span class="token punctuation">)</span><span class="token punctuation">:</span>
+
+        m <span class="token operator">=</span> Module<span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+
+
+        m<span class="token punctuation">.</span>submodules<span class="token punctuation">.</span>upsample <span class="token operator">=</span> self<span class="token punctuation">.</span>upsample
+
+        m<span class="token punctuation">.</span>submodules<span class="token punctuation">.</span>border <span class="token operator">=</span> self<span class="token punctuation">.</span>border
+
+
+
+        wiring<span class="token punctuation">.</span>connect<span class="token punctuation">(</span>m<span class="token punctuation">,</span> wiring<span class="token punctuation">.</span>flipped<span class="token punctuation">(</span>self<span class="token punctuation">.</span>consume<span class="token punctuation">)</span><span class="token punctuation">,</span> self<span class="token punctuation">.</span>upsample<span class="token punctuation">.</span>consume<span class="token punctuation">)</span>
+
+        wiring<span class="token punctuation">.</span>connect<span class="token punctuation">(</span>m<span class="token punctuation">,</span> self<span class="token punctuation">.</span>upsample<span class="token punctuation">.</span>produce<span class="token punctuation">,</span> self<span class="token punctuation">.</span>border<span class="token punctuation">.</span>consume<span class="token punctuation">)</span>
+
+        wiring<span class="token punctuation">.</span>connect<span class="token punctuation">(</span>m<span class="token punctuation">,</span> wiring<span class="token punctuation">.</span>flipped<span class="token punctuation">(</span>self<span class="token punctuation">.</span>produce<span class="token punctuation">)</span><span class="token punctuation">,</span> self<span class="token punctuation">.</span>border<span class="token punctuation">.</span>produce<span class="token punctuation">)</span>
+
+
+
+        <span class="token keyword">return</span> m</code></pre>
+
+<p>I also wrote a module which sets a framebuffer and repeatedly streams out data. After converting my amaranth modules to verilog, I place them in the vivado block diagram.</p>
+
+<p><img alt="" src="file:///C:/Users/magen/AppData/Roaming/marktext/images/2025-03-12-13-40-37-image.png"></p>
+
+<p>This displayed correctly on my VGA monitor, which is a satisfying step. With a way to check output, I am going to move onto making the components of the picture-processing unit.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

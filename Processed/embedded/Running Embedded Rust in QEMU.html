@@ -1,0 +1,150 @@
+<html>
+
+   <head>
+
+      <title>Running Embedded Rust in QEMU</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="running-embedded-rust-in-qemu">Running Embedded Rust in QEMU</h1>
+
+<p>I am interested in expanding my ability to write more stable and flexible embedded programs. As part of that, I am improving my knowledge of virtualization options. For rust applications a somewhat established approach is to use QEMU virtualization. QEMU is a very flexible virtualization platform, which I have used before for faster development of a raspberry pi application.</p>
+
+<p>I am using <a href="https://docs.rust-embedded.org/book/start/qemu.html">The Embedded Rust Book</a> as a reference.</p>
+
+<p>To start with a cortex-m project, it is good to start with the templates. A new project can be pulled from them using <code>cargo generate</code></p>
+
+<pre><code class="fenced-code-block language-powershell">  cargo generate <span class="token operator">--</span>git https:<span class="token operator">/</span><span class="token operator">/</span>github<span class="token punctuation">.</span>com/rust-embedded/cortex-m-quickstart</code></pre>
+
+<p>The initial <code>main.rs</code> is</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#![no_std]</span>
+
+<span class="token attribute attr-name">#![no_main]</span>
+
+
+
+<span class="token keyword">use</span> panic_halt <span class="token keyword">as</span> _<span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">use</span> <span class="token namespace">cortex_m_rt<span class="token punctuation">::</span></span>entry<span class="token punctuation">;</span>
+
+
+
+<span class="token attribute attr-name">#[entry]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token operator">!</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">loop</span> <span class="token punctuation">{</span>
+
+        <span class="token comment">// your code goes here</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>This does not linke the <code>std</code> crate, but to the subset <code>core</code> crate. The <code>main</code> function is set explicitly as the entry point.</p>
+
+<p>This code is fine, but it doesn't do anything. To get started let's add a debug print function, and a exit indicator for the debugger.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#![no_main]</span>
+
+<span class="token attribute attr-name">#![no_std]</span>
+
+
+
+<span class="token keyword">use</span> panic_halt <span class="token keyword">as</span> _<span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">use</span> <span class="token namespace">cortex_m_rt<span class="token punctuation">::</span></span>entry<span class="token punctuation">;</span>
+
+<span class="token keyword">use</span> <span class="token namespace">cortex_m_semihosting<span class="token punctuation">::</span></span><span class="token punctuation">{</span>debug<span class="token punctuation">,</span> hprintln<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+
+
+<span class="token attribute attr-name">#[entry]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token operator">!</span> <span class="token punctuation">{</span>
+
+    <span class="token macro property">hprintln!</span><span class="token punctuation">(</span><span class="token string">"Hello, world!"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token comment">// exit QEMU</span>
+
+    <span class="token comment">// NOTE do not run this on hardware; it can corrupt OpenOCD state</span>
+
+    <span class="token namespace">debug<span class="token punctuation">::</span></span><span class="token function">exit</span><span class="token punctuation">(</span><span class="token namespace">debug<span class="token punctuation">::</span></span><span class="token constant">EXIT_SUCCESS</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token keyword">loop</span> <span class="token punctuation">{</span><span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p><code>hprintln!</code> is a macro which is printed using semihosting to QEMU's host. This would also display in a debug session.</p>
+
+<p>To output the binary, the package just has to be built.</p>
+
+<pre><code class="fenced-code-block language-rust">cargo build</code></pre>
+
+<p>Then qemu can be run using</p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-arm <span class="token punctuation">\</span>
+
+  -cpu cortex-m3 <span class="token punctuation">\</span>
+
+  -machine lm3s6965evb <span class="token punctuation">\</span>
+
+  -nographic <span class="token punctuation">\</span>
+
+  -semihosting-config <span class="token assign-left variable">enable</span><span class="token operator">=</span>on,target<span class="token operator">=</span>native <span class="token punctuation">\</span>
+
+  -kernel target/thumbv7m-none-eabi/debug/examples/cortex_demo</code></pre>
+
+<p>This outputs the debug message directly to console, and exits gracefully.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

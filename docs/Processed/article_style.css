@@ -1,0 +1,32 @@
+body{
+  width: 40%;
+  min-width: 40em;
+  margin:auto;
+  background-color: #FFFFFF;
+  color: #000c14;
+  float: top;
+  background-image: url("img/background.jpg");
+}
+
+pre{
+  color:#000000;  
+  background-color: #DDDDDD;
+}
+
+#article{
+  border: solid;
+  padding: 2em;
+  opacity: 0.95;
+  margin-top: 2em;
+  margin-bottom: 4em;
+  background-color: #FFFFFF;
+}
+
+.nav{
+  background-color: #FFFFFF;
+  opacity: 0.8;
+  border: solid;
+  padding: 2em;
+  width: 10em;
+  margin-top: 2em;
+}

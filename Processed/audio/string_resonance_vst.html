@@ -1,0 +1,654 @@
+<html>
+
+   <head>
+
+      <title>String Resonance VST</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="string-resonance-vst">String Resonance VST</h1>
+
+<p>I'm interested in audio effects using string resonance. Digitally modeling a string can be done using a delay line and a low pass filter.  This is the Karplus-Strong algorithm,</p>
+
+<span class="katex-display"><span class="katex"><span class="katex-mathml"></span><span aria-hidden="true" class="katex-html"><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span style="margin-right:0.03588em;" class="mord mathnormal">y</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span class="mclose">)</span><span style="margin-right:0.2778em;" class="mspace"></span><span class="mrel">=</span><span style="margin-right:0.2778em;" class="mspace"></span></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span class="mord mathnormal">x</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span class="mclose">)</span><span style="margin-right:0.2222em;" class="mspace"></span><span class="mbin">+</span><span style="margin-right:0.2222em;" class="mspace"></span></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span class="mord mathnormal">h</span><span class="mopen">(</span><span class="mord mathnormal">x</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span style="margin-right:0.2222em;" class="mspace"></span><span class="mbin">−</span><span style="margin-right:0.2222em;" class="mspace"></span></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span style="margin-right:0.07153em;" class="mord mathnormal">K</span><span class="mclose">))</span></span><span class="mspace newline"></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span style="margin-right:0.03588em;" class="mord mathnormal">y</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span class="mclose">)</span><span style="margin-right:0.2778em;" class="mspace"></span><span class="mrel">:=</span><span style="margin-right:0.2778em;" class="mspace"></span></span><span class="base"><span style="height:0.8778em;vertical-align:-0.1944em;" class="strut"></span><span style="margin-right:0.02778em;" class="mord mathnormal">O</span><span class="mord mathnormal">u</span><span class="mord mathnormal">tp</span><span class="mord mathnormal">u</span><span class="mord mathnormal">t</span></span><span class="mspace newline"></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span class="mord mathnormal">x</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span class="mclose">)</span><span style="margin-right:0.2778em;" class="mspace"></span><span class="mrel">:=</span><span style="margin-right:0.2778em;" class="mspace"></span></span><span class="base"><span style="height:0.8778em;vertical-align:-0.1944em;" class="strut"></span><span style="margin-right:0.07847em;" class="mord mathnormal">I</span><span class="mord mathnormal">n</span><span class="mord mathnormal">p</span><span class="mord mathnormal">u</span><span class="mord mathnormal">t</span></span><span class="mspace newline"></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span class="mord mathnormal">x</span><span class="mopen">(</span><span class="mord mathnormal">n</span><span style="margin-right:0.2222em;" class="mspace"></span><span class="mbin">−</span><span style="margin-right:0.2222em;" class="mspace"></span></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span style="margin-right:0.07153em;" class="mord mathnormal">K</span><span class="mclose">)</span><span style="margin-right:0.2778em;" class="mspace"></span><span class="mrel">:=</span><span style="margin-right:0.2778em;" class="mspace"></span></span><span class="base"><span style="height:0.8889em;vertical-align:-0.1944em;" class="strut"></span><span class="mord mathnormal">De</span><span style="margin-right:0.01968em;" class="mord mathnormal">l</span><span class="mord mathnormal">a</span><span style="margin-right:0.03588em;" class="mord mathnormal">y</span></span><span class="mspace newline"></span><span class="base"><span style="height:1em;vertical-align:-0.25em;" class="strut"></span><span class="mord mathnormal">h</span><span class="mopen">(</span><span style="margin-right:0.03588em;" class="mord mathnormal">v</span><span class="mclose">)</span><span style="margin-right:0.2778em;" class="mspace"></span><span class="mrel">:=</span><span style="margin-right:0.2778em;" class="mspace"></span></span><span class="base"><span style="height:0.6944em;" class="strut"></span><span style="margin-right:0.13889em;" class="mord mathnormal">F</span><span class="mord mathnormal">i</span><span class="mord mathnormal">lt</span><span style="margin-right:0.02778em;" class="mord mathnormal">er</span></span></span></span></span><p>The length of the delay line represents the time a soundwave takes to travel to and from the length of a string. The filter represents the physical dampening of instrument elements (the nut, the bridge, the body). A real instrument has multiple resonant delay lines, but we can make fictional and interesting string models by layering multiple blocks.</p>
+
+<h2 class="atx" id="pure-data-model">Pure Data Model</h2>
+
+<p>A quick testing model can be made in pure data. This allows a quick way to get baseline parameters and play with the audio. The input is a short burst of noise, which simulates a pluck.</p>
+
+<p><img alt="pd_string.png" src="file:///C:/Users/magen/Documents/Blog/Resources/string_resonance/pd_string.png"></p>
+
+<p>With a basic model to go back to, I can start implementing on different platforms to improve playability.</p>
+
+<h2 class="atx" id="rust-implementation">Rust implementation</h2>
+
+<p>The next step I wanted to get into a rust implementation, and put it into a nice plugin format so it can be used with a DAW. It's looking like <code>nih-plugin</code> is the most built out and supported framework for CLAP and VST3 right now so I'm going to look into that. The implementation of the model was fairly minimal using a basic array as a delay line and using neodsp's <code>simper-filter</code>  as starting point for the filter.</p>
+
+<h2 class="atx" id="delay-line">Delay Line</h2>
+
+<p>A basic delay line just requires some container class that can be written to at one point and read from another point N samples prior. For my implementation I used a basic array. A vector could be used to have dynamic memory size. However since I am aiming towards an embedded version of this effect, I'd rather have set memory bounds.</p>
+
+<p>The buffer is declared as</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[derive(Debug, Copy, Clone)]</span>
+
+<span class="token keyword">pub</span> <span class="token keyword">struct</span> <span class="token type-definition class-name">DelayLine</span><span class="token operator">&lt;</span><span class="token class-name">T</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> amount<span class="token punctuation">:</span> <span class="token keyword">usize</span><span class="token punctuation">,</span>
+
+    buffer<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">T</span><span class="token punctuation">;</span> <span class="token constant">MAX_LENGTH</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+    wp<span class="token punctuation">:</span> <span class="token keyword">usize</span><span class="token punctuation">,</span>
+
+    y0<span class="token punctuation">:</span> <span class="token class-name">T</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Then we can write and read samples using <code>pop</code> and <code>push</code> methods. The struct keeps track of a write pointer, and calculates a read pointer which is N samples behind the write head.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">impl</span><span class="token operator">&lt;</span><span class="token lifetime-annotation symbol">'a</span><span class="token punctuation">,</span> <span class="token class-name">T</span><span class="token punctuation">:</span> <span class="token namespace">std<span class="token punctuation">::</span>marker<span class="token punctuation">::</span></span><span class="token class-name">Copy</span> <span class="token operator">+</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span> <span class="token operator">+</span> <span class="token class-name">FromPrimitive</span> <span class="token operator">+</span> <span class="token lifetime-annotation symbol">'a</span><span class="token operator">&gt;</span> <span class="token class-name">DelayLine</span><span class="token operator">&lt;</span><span class="token class-name">T</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token keyword">Self</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">Self</span><span class="token punctuation">{</span>
+
+            amount<span class="token punctuation">:</span> <span class="token number">0</span><span class="token punctuation">,</span>
+
+            buffer<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">T</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token constant">MAX_LENGTH</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+            wp<span class="token punctuation">:</span> <span class="token number">0</span><span class="token punctuation">,</span>
+
+            y0<span class="token punctuation">:</span> <span class="token class-name">T</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">push</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> data<span class="token punctuation">:</span> <span class="token class-name">T</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>buffer<span class="token punctuation">[</span><span class="token keyword">self</span><span class="token punctuation">.</span>wp<span class="token punctuation">]</span> <span class="token operator">=</span> data<span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>wp <span class="token operator">=</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>wp <span class="token operator">+</span> <span class="token number">1</span><span class="token punctuation">)</span> <span class="token operator">%</span> <span class="token constant">MAX_LENGTH</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">pop</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">T</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">let</span> rp<span class="token punctuation">:</span> <span class="token keyword">isize</span> <span class="token operator">=</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>wp <span class="token keyword">as</span> <span class="token keyword">isize</span><span class="token punctuation">)</span> <span class="token operator">-</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>amount <span class="token keyword">as</span> <span class="token keyword">isize</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>y0 <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>buffer<span class="token punctuation">[</span><span class="token function">wrap_value</span><span class="token punctuation">(</span>rp<span class="token punctuation">)</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>y0
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>The <code>wrap_value</code> function just sets the read pointer to a valid index:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">wrap_value</span><span class="token punctuation">(</span>v<span class="token punctuation">:</span> <span class="token keyword">isize</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token keyword">usize</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">if</span> v <span class="token operator">&lt;</span> <span class="token number">0</span><span class="token punctuation">{</span>
+
+        <span class="token punctuation">(</span><span class="token punctuation">(</span>v <span class="token operator">+</span> <span class="token constant">MAX_LENGTH</span> <span class="token keyword">as</span> <span class="token keyword">isize</span><span class="token punctuation">)</span> <span class="token keyword">as</span> <span class="token keyword">usize</span><span class="token punctuation">)</span> <span class="token operator">%</span> <span class="token constant">MAX_LENGTH</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">else</span><span class="token punctuation">{</span>
+
+        <span class="token punctuation">(</span>v <span class="token keyword">as</span> <span class="token keyword">usize</span><span class="token punctuation">)</span> <span class="token operator">%</span> <span class="token constant">MAX_LENGTH</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Then to adjust the delay length I added a method to set from a frequency value:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">set_frequency</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> f<span class="token punctuation">:</span> <span class="token keyword">f32</span><span class="token punctuation">,</span> sampling<span class="token punctuation">:</span> <span class="token keyword">f32</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">let</span> delay <span class="token operator">=</span> sampling <span class="token operator">/</span> f<span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>amount <span class="token operator">=</span> delay<span class="token punctuation">.</span><span class="token function">round</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token keyword">as</span> <span class="token keyword">usize</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">if</span> <span class="token keyword">self</span><span class="token punctuation">.</span>amount <span class="token operator">&gt;=</span> <span class="token constant">MAX_LENGTH</span><span class="token punctuation">{</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span>amount <span class="token operator">=</span> <span class="token constant">MAX_LENGTH</span> <span class="token operator">-</span> <span class="token number">1</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span></code></pre>
+
+<h2 class="atx" id="filter">Filter</h2>
+
+<p>The filter implementation is fairly simple, because I'm using an existing filter class. It's wrapped in a generic object, so that I can play with some other filter objects. The trait sets up the basic interface for the filter:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">trait</span> <span class="token type-definition class-name">Filter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">tick</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> _input<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">F</span> <span class="token punctuation">{</span>
+
+        <span class="token comment">/* Input one sample into filter and get result */</span>
+
+        <span class="token class-name">F</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span> 
+
+    <span class="token punctuation">}</span> 
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">set_cutoff</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> _cutoff<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token comment">/* Set the cutoff frequency of the filter */</span>
+
+        <span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">set_q</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> _q<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token comment">/* Set the resonance of the filter */</span>
+
+        <span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Although some filters might call for more setters, for most low performance cost filters, this will work fine. </p>
+
+<p>For the Simper Filter, wrapping an <code>Svf</code> object is straightforward I use a struct with the parameters:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[derive(Default, Clone)]</span>
+
+<span class="token keyword">pub</span> <span class="token keyword">struct</span> <span class="token type-definition class-name">FilterSetting</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Copy</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> filter_type<span class="token punctuation">:</span> <span class="token class-name">FilterType</span><span class="token punctuation">,</span>
+
+    <span class="token keyword">pub</span> sample_rate<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">,</span>
+
+    <span class="token keyword">pub</span> cutoff<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">,</span>
+
+    <span class="token keyword">pub</span> q<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">,</span>
+
+    <span class="token keyword">pub</span> gain<span class="token punctuation">:</span> <span class="token class-name">F</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">impl</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span><span class="token operator">&gt;</span> <span class="token class-name">FilterSetting</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">to_svf_coeff</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">self</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">SvfCoefficients</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">let</span> <span class="token keyword">mut</span> coeffs <span class="token operator">=</span> <span class="token class-name">SvfCoefficients</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">let</span> _result <span class="token operator">=</span> coeffs<span class="token punctuation">.</span><span class="token function">set</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>filter_type<span class="token punctuation">.</span><span class="token function">clone</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token keyword">self</span><span class="token punctuation">.</span>sample_rate<span class="token punctuation">,</span> <span class="token keyword">self</span><span class="token punctuation">.</span>cutoff<span class="token punctuation">,</span> <span class="token keyword">self</span><span class="token punctuation">.</span>q<span class="token punctuation">,</span> <span class="token keyword">self</span><span class="token punctuation">.</span>gain<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        coeffs
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>And then add a method to update the filter:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">set</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span>filter<span class="token punctuation">.</span><span class="token function">set_coeffs</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>setting<span class="token punctuation">.</span><span class="token function">to_svf_coeff</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Then the trait implementation looks like this:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">impl</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span><span class="token operator">&gt;</span> <span class="token class-name">Filter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span> <span class="token keyword">for</span> <span class="token class-name">SimperFilter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">tick</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> input<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">F</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>filter<span class="token punctuation">.</span><span class="token function">tick</span><span class="token punctuation">(</span>input<span class="token punctuation">)</span>   
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">set_cutoff</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> cutoff<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>setting<span class="token punctuation">.</span>cutoff <span class="token operator">=</span> cutoff<span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">set</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span> 
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">set_q</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> q<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>setting<span class="token punctuation">.</span>q <span class="token operator">=</span> q<span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">set</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<h2 class="atx" id="nih-plugin">NIH Plugin</h2>
+
+<p>With those two building blocks done, I can create an audio plugin. I use the <code>NIH-plugin</code> framework which can generate CLAP and VST3 plugins.  I used the </p>
+
+<p><a href="https://github.com/robbert-vdh/nih-plug/tree/master/plugins/examples/gain">gain example</a> as a starting point.</p>
+
+<p>For a VST which transforms audio-&gt;audio (i.e. no real midi processing), the plugin has to provide the params, which appear to the DAW as controls. And the core audio processing step.</p>
+
+<p>I set each "string" as it's own struct. This just combines a delay line with a filter with a an easy way to process an incoming sample.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[derive(Debug, Copy, Clone)]</span>
+
+<span class="token keyword">pub</span> <span class="token keyword">struct</span> <span class="token type-definition class-name">Model</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span><span class="token punctuation">,</span> <span class="token class-name">ModelFilter</span><span class="token punctuation">:</span> <span class="token class-name">Filter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> filter<span class="token punctuation">:</span> <span class="token class-name">ModelFilter</span><span class="token punctuation">,</span>
+
+    <span class="token keyword">pub</span> delay<span class="token punctuation">:</span> <span class="token class-name">DelayLine</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">impl</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span> <span class="token operator">+</span> <span class="token class-name">FromPrimitive</span><span class="token punctuation">,</span> <span class="token class-name">ModelFilter</span><span class="token punctuation">:</span> <span class="token class-name">Filter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;</span> <span class="token operator">+</span> <span class="token class-name">Default</span><span class="token operator">&gt;</span><span class="token class-name">Default</span> <span class="token keyword">for</span> <span class="token class-name">Model</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">,</span> <span class="token class-name">ModelFilter</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token keyword">Self</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">let</span> f <span class="token operator">=</span> <span class="token class-name">ModelFilter</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">Self</span><span class="token punctuation">{</span>
+
+            filter<span class="token punctuation">:</span> f<span class="token punctuation">,</span>
+
+            delay<span class="token punctuation">:</span> <span class="token class-name">DelayLine</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">impl</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">:</span> <span class="token class-name">Float</span> <span class="token operator">+</span> <span class="token class-name">Default</span> <span class="token operator">+</span> <span class="token class-name">FromPrimitive</span><span class="token punctuation">,</span> <span class="token class-name">ModelFilter</span><span class="token punctuation">:</span> <span class="token class-name">Filter</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token operator">&gt;&gt;</span> <span class="token class-name">Model</span><span class="token operator">&lt;</span><span class="token class-name">F</span><span class="token punctuation">,</span> <span class="token class-name">ModelFilter</span><span class="token operator">&gt;</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">process</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> input<span class="token punctuation">:</span> <span class="token class-name">F</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">F</span><span class="token punctuation">{</span>
+
+        <span class="token comment">/* Process one sample */</span>
+
+        <span class="token comment">// Get delayed sample</span>
+
+        <span class="token keyword">let</span> delay_out <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>delay<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token comment">// Filter delayed sample</span>
+
+        <span class="token keyword">let</span> f_result <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>filter<span class="token punctuation">.</span><span class="token function">tick</span><span class="token punctuation">(</span>delay_out<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token comment">// Combine input and filtered result into start of delay</span>
+
+        <span class="token keyword">let</span> delay_result <span class="token operator">=</span> f_result <span class="token operator">+</span> input<span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>delay<span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>delay_result<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token comment">// Return delayed sample</span>
+
+        delay_out
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>In the top-level <code>lib.rs</code>, the actual plugin contains a pointer to the <code>Params</code>, and a array of four strings. I also have an oscillator which can be used to change the string tuning over time.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">const</span> <span class="token constant">NUM_STRINGS</span><span class="token punctuation">:</span> <span class="token keyword">usize</span> <span class="token operator">=</span> <span class="token number">4</span><span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">struct</span> <span class="token type-definition class-name">StringModel</span><span class="token punctuation">{</span>
+
+    params<span class="token punctuation">:</span> <span class="token class-name">Arc</span><span class="token operator">&lt;</span><span class="token class-name">StringParams</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
+
+    model<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">Model</span><span class="token operator">&lt;</span><span class="token keyword">f32</span><span class="token punctuation">,</span> <span class="token class-name">SimperFilter</span><span class="token operator">&lt;</span><span class="token keyword">f32</span><span class="token operator">&gt;&gt;</span><span class="token punctuation">;</span> <span class="token constant">NUM_STRINGS</span><span class="token punctuation">]</span><span class="token punctuation">,</span>
+
+    lfo<span class="token punctuation">:</span> <span class="token namespace">lfo<span class="token punctuation">::</span></span><span class="token constant">LFO</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>If I wanted to experiment with other filters, I can drop in a struct with my filter.</p>
+
+<p>For the parameters, the plugin provides controls for dry and wet gain, lfo controls and the base note of the resonator strings. Each string has a gain, offset pitch and filter controls.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[derive(Params)]</span>
+
+<span class="token keyword">struct</span> <span class="token type-definition class-name">StringParams</span><span class="token punctuation">{</span>
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"dry"</span>]</span>
+
+    <span class="token keyword">pub</span> dry<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"wet"</span>]</span>
+
+    <span class="token keyword">pub</span> wet<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"note"</span>]</span>
+
+    <span class="token keyword">pub</span> base<span class="token punctuation">:</span> <span class="token class-name">IntParam</span><span class="token punctuation">,</span>
+
+
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"lfo rate"</span>]</span>
+
+    <span class="token keyword">pub</span> lfo_rate<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"lfo depth"</span>]</span>
+
+    <span class="token keyword">pub</span> lfo_depth<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+
+
+    <span class="token attribute attr-name">#[nested(array, group = <span class="token string">"String Parameters"</span>)]</span>
+
+    <span class="token keyword">pub</span> element_params<span class="token punctuation">:</span> <span class="token punctuation">[</span><span class="token class-name">ElementParams</span><span class="token punctuation">;</span> <span class="token constant">NUM_STRINGS</span><span class="token punctuation">]</span>
+
+
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token attribute attr-name">#[derive(Params)]</span>
+
+<span class="token keyword">struct</span> <span class="token type-definition class-name">ElementParams</span><span class="token punctuation">{</span>
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"gain"</span>]</span>
+
+    <span class="token keyword">pub</span> gain<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"offset"</span>]</span>
+
+    <span class="token keyword">pub</span> offset<span class="token punctuation">:</span> <span class="token class-name">IntParam</span><span class="token punctuation">,</span>
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"Cutoff"</span>]</span>
+
+    <span class="token keyword">pub</span> cutoff<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">,</span>
+
+    <span class="token attribute attr-name">#[id = <span class="token string">"Q"</span>]</span>
+
+    <span class="token keyword">pub</span> q<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>The range and type of each parameter are set in the Default implementation. Because I have a few gain controls, I added a function to setup a control which is shown in dB but  provides a logarithmically mapped value.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">db_param</span><span class="token punctuation">(</span>name<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token keyword">str</span><span class="token punctuation">,</span> min<span class="token punctuation">:</span> <span class="token keyword">f32</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token keyword">f32</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">FloatParam</span><span class="token punctuation">{</span>
+
+    <span class="token class-name">FloatParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span>
+
+        name<span class="token punctuation">,</span>
+
+        <span class="token namespace">util<span class="token punctuation">::</span></span><span class="token function">db_to_gain</span><span class="token punctuation">(</span><span class="token number">0.0</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+        <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token class-name">Skewed</span> <span class="token punctuation">{</span> 
+
+            min<span class="token punctuation">:</span> <span class="token namespace">util<span class="token punctuation">::</span></span><span class="token function">db_to_gain</span><span class="token punctuation">(</span>min<span class="token punctuation">)</span><span class="token punctuation">,</span> 
+
+            max<span class="token punctuation">:</span> <span class="token namespace">util<span class="token punctuation">::</span></span><span class="token function">db_to_gain</span><span class="token punctuation">(</span>max<span class="token punctuation">)</span><span class="token punctuation">,</span> 
+
+            factor<span class="token punctuation">:</span> <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token function">gain_skew_factor</span><span class="token punctuation">(</span>min<span class="token punctuation">,</span> max<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+    <span class="token punctuation">)</span>
+
+    <span class="token punctuation">.</span><span class="token function">with_smoother</span><span class="token punctuation">(</span><span class="token class-name">SmoothingStyle</span><span class="token punctuation">::</span><span class="token class-name">Logarithmic</span><span class="token punctuation">(</span><span class="token number">50.0</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+    <span class="token punctuation">.</span><span class="token function">with_unit</span><span class="token punctuation">(</span><span class="token string">" dB"</span><span class="token punctuation">)</span>
+
+    <span class="token punctuation">.</span><span class="token function">with_value_to_string</span><span class="token punctuation">(</span><span class="token namespace">formatters<span class="token punctuation">::</span></span><span class="token function">v2s_f32_gain_to_db</span><span class="token punctuation">(</span><span class="token number">2</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+    <span class="token punctuation">.</span><span class="token function">with_string_to_value</span><span class="token punctuation">(</span><span class="token namespace">formatters<span class="token punctuation">::</span></span><span class="token function">s2v_f32_gain_to_db</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>The implementation for the controls looks like this.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">impl</span> <span class="token class-name">Default</span> <span class="token keyword">for</span> <span class="token class-name">StringParams</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token keyword">Self</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">Self</span><span class="token punctuation">{</span>
+
+            dry<span class="token punctuation">:</span> <span class="token function">db_param</span><span class="token punctuation">(</span><span class="token string">"dry"</span><span class="token punctuation">,</span> <span class="token operator">-</span><span class="token number">60.0</span><span class="token punctuation">,</span><span class="token number">20.0</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            wet<span class="token punctuation">:</span> <span class="token function">db_param</span><span class="token punctuation">(</span><span class="token string">"wet"</span><span class="token punctuation">,</span> <span class="token operator">-</span><span class="token number">60.0</span><span class="token punctuation">,</span><span class="token number">20.0</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            base<span class="token punctuation">:</span> <span class="token class-name">IntParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Note base"</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> <span class="token class-name">IntRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token operator">-</span><span class="token number">44</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">44</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            lfo_rate<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Lfo Rate"</span><span class="token punctuation">,</span> <span class="token number">1.0</span><span class="token punctuation">,</span> <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token number">0.1</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">30.0</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            lfo_depth<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Lfo Depth"</span><span class="token punctuation">,</span> <span class="token number">0.0</span><span class="token punctuation">,</span> <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token number">0.0</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">5.0</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            element_params<span class="token punctuation">:</span> <span class="token class-name">Default</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span>
+
+
+
+
+
+<span class="token keyword">impl</span> <span class="token class-name">Default</span> <span class="token keyword">for</span> <span class="token class-name">ElementParams</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">fn</span> <span class="token function-definition function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token keyword">Self</span> <span class="token punctuation">{</span>
+
+        <span class="token keyword">Self</span><span class="token punctuation">{</span>
+
+            gain<span class="token punctuation">:</span> <span class="token function">db_param</span><span class="token punctuation">(</span><span class="token string">"gain"</span><span class="token punctuation">,</span> <span class="token operator">-</span><span class="token number">30.0</span><span class="token punctuation">,</span> <span class="token number">0.0</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            offset<span class="token punctuation">:</span> <span class="token class-name">IntParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Note offset"</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">,</span> 
+
+                <span class="token class-name">IntRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token number">0</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">36</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            cutoff<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Cutoff"</span><span class="token punctuation">,</span> <span class="token number">440.0</span><span class="token punctuation">,</span>
+
+                    <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token number">10.0</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">22000.0</span> <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+            q<span class="token punctuation">:</span> <span class="token class-name">FloatParam</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token string">"Q"</span><span class="token punctuation">,</span> <span class="token number">0.771</span><span class="token punctuation">,</span> <span class="token class-name">FloatRange</span><span class="token punctuation">::</span><span class="token class-name">Linear</span> <span class="token punctuation">{</span> min<span class="token punctuation">:</span> <span class="token number">0.5</span><span class="token punctuation">,</span> max<span class="token punctuation">:</span> <span class="token number">1.0</span> <span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Most of the plugin resembles the gain plugin, but the audio process step consists of retrieving control values, and then processing through each string resonator. There's no real optimizations here, but the core processing of each sample is fairly fast.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">process</span><span class="token punctuation">(</span>
+
+    <span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span>
+
+    buffer<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token class-name">Buffer</span><span class="token punctuation">,</span>
+
+    _aux<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token class-name">AuxiliaryBuffers</span><span class="token punctuation">,</span>
+
+    _context<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">impl</span> <span class="token class-name">ProcessContext</span><span class="token operator">&lt;</span><span class="token keyword">Self</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
+
+<span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">ProcessStatus</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">for</span> channel_samples <span class="token keyword">in</span> buffer<span class="token punctuation">.</span><span class="token function">iter_samples</span>
+
+<span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+
+
+        <span class="token keyword">let</span> wet_gain <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>wet<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">let</span> dry_gain <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>dry<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>lfo<span class="token punctuation">.</span>amount <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>lfo_depth<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span>lfo<span class="token punctuation">.</span><span class="token function">set_freq</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>lfo_rate<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token keyword">let</span> <span class="token keyword">mut</span> elem_gain <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token number">0.0</span><span class="token punctuation">;</span> <span class="token constant">NUM_STRINGS</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token number">0</span><span class="token punctuation">..</span><span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">.</span><span class="token function">len</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+            elem_gain<span class="token punctuation">[</span>i<span class="token punctuation">]</span> <span class="token operator">=</span> wet_gain <span class="token operator">*</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>element_params<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>gain<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>filter<span class="token punctuation">.</span><span class="token function">set_cutoff</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>element_params<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>cutoff<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>filter<span class="token punctuation">.</span><span class="token function">set_q</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>element_params<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>q<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+
+
+        <span class="token comment">// Base note of delay</span>
+
+        <span class="token keyword">let</span> base_note <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>base<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token keyword">let</span> <span class="token keyword">mut</span> note <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token number">0.0</span><span class="token punctuation">;</span> <span class="token constant">NUM_STRINGS</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+
+
+
+        <span class="token comment">// Each element</span>
+
+        <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token number">0</span><span class="token punctuation">..</span><span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">.</span><span class="token function">len</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+            note<span class="token punctuation">[</span>i<span class="token punctuation">]</span> <span class="token operator">=</span> <span class="token punctuation">(</span>base_note <span class="token operator">+</span> <span class="token keyword">self</span><span class="token punctuation">.</span>params<span class="token punctuation">.</span>element_params<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>offset<span class="token punctuation">.</span>smoothed<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span> <span class="token keyword">as</span> <span class="token keyword">f32</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+
+
+        <span class="token comment">// Process each sample</span>
+
+        <span class="token keyword">for</span> sample <span class="token keyword">in</span> channel_samples<span class="token punctuation">{</span>
+
+            <span class="token keyword">let</span> dry_value <span class="token operator">=</span> <span class="token operator">*</span>sample<span class="token punctuation">;</span>
+
+            <span class="token operator">*</span>sample <span class="token operator">=</span> dry_gain <span class="token operator">*</span> dry_value<span class="token punctuation">;</span>
+
+            <span class="token keyword">let</span> lfo_value <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span>lfo<span class="token punctuation">.</span><span class="token function">next</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+            <span class="token keyword">for</span> i <span class="token keyword">in</span> <span class="token number">0</span><span class="token punctuation">..</span><span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">.</span><span class="token function">len</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+                <span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span>delay<span class="token punctuation">.</span><span class="token function">set_frequency</span><span class="token punctuation">(</span><span class="token function">note_to_freq</span><span class="token punctuation">(</span>note<span class="token punctuation">[</span>i<span class="token punctuation">]</span> <span class="token operator">+</span> lfo_value<span class="token punctuation">,</span> <span class="token number">440.0</span><span class="token punctuation">)</span><span class="token punctuation">,</span> <span class="token number">441000.0</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                <span class="token operator">*</span>sample <span class="token operator">+=</span> <span class="token punctuation">(</span>elem_gain<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token operator">*</span> <span class="token keyword">self</span><span class="token punctuation">.</span>model<span class="token punctuation">[</span>i<span class="token punctuation">]</span><span class="token punctuation">.</span><span class="token function">process</span><span class="token punctuation">(</span>dry_value<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token punctuation">}</span>
+
+
+
+            <span class="token comment">// Clip</span>
+
+            <span class="token keyword">if</span> <span class="token operator">*</span>sample <span class="token operator">&lt;</span> <span class="token operator">-</span><span class="token number">1.0</span><span class="token punctuation">{</span>
+
+                <span class="token operator">*</span>sample <span class="token operator">=</span> <span class="token number">0.0</span><span class="token punctuation">;</span>
+
+            <span class="token punctuation">}</span>
+
+            <span class="token keyword">if</span> <span class="token operator">*</span>sample <span class="token operator">&gt;</span> <span class="token number">1.0</span><span class="token punctuation">{</span>
+
+                <span class="token operator">*</span>sample <span class="token operator">=</span> <span class="token number">1.0</span><span class="token punctuation">;</span>
+
+            <span class="token punctuation">}</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token class-name">ProcessStatus</span><span class="token punctuation">::</span><span class="token class-name">Normal</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>I am holding off on writing the front end, but this is functional. I did use <a href="https://github.com/free-audio/clap-validator">Free-audio's CLAP validator</a> to get some basic logging information about the device. I'm not sure if any DAW provides easy to find logging information. When I initially tried running the plugin, it crashed immediately. I had to reduce the delay line max size to prevent it from using more stack memory than is allocated for the plugin. Using a vec would get around this (allocated to heap). For this plugin, the maximum delay is relatively short, as it should be in audible range.</p>
+
+<p>Without a frontend, most daws render plugins with slider/dropdown widgets.</p>
+
+<p><img alt="basic_clap.png" src="file:///C:/Users/magen/Documents/Blog/Resources/string_resonance/basic_clap.png"></p>
+
+<h2 class="atx" id="build-details">Build details</h2>
+
+<p>The NIH Plugin crate can be added to <code>Cargo.toml</code></p>
+
+<pre><code class="fenced-code-block language-toml"><span class="token punctuation">[</span><span class="token table class-name">dependencies</span><span class="token punctuation">]</span>
+
+<span class="token key property">nih_plug</span> <span class="token punctuation">=</span> <span class="token punctuation">{</span> <span class="token key property">git</span> <span class="token punctuation">=</span> <span class="token string">"https://github.com/robbert-vdh/nih-plug.git"</span><span class="token punctuation">,</span> <span class="token key property">features</span> <span class="token punctuation">=</span> <span class="token punctuation">[</span><span class="token string">"assert_process_allocs"</span><span class="token punctuation">]</span> <span class="token punctuation">}</span>
+
+<span class="token key property">parking_lot</span> <span class="token punctuation">=</span> <span class="token string">"0.12"</span></code></pre>
+
+<p>In order to bundle into CLAP and VST, I used an xtask subproject, the main function runs from the <code>nih_plug_xtask</code> crate.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token namespace">nih_plug_xtask<span class="token punctuation">::</span></span><span class="token class-name">Result</span><span class="token operator">&lt;</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token operator">&gt;</span> <span class="token punctuation">{</span>
+
+    <span class="token namespace">nih_plug_xtask<span class="token punctuation">::</span></span><span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>This can be added to the build in the top-level <code>Cargo.toml</code> with the workspace tag.</p>
+
+<pre><code class="fenced-code-block language-toml"><span class="token punctuation">[</span><span class="token table class-name">workspace</span><span class="token punctuation">]</span>
+
+<span class="token key property">members</span> <span class="token punctuation">=</span> <span class="token punctuation">[</span>
+
+  <span class="token string">"xtask"</span><span class="token punctuation">,</span>
+
+<span class="token punctuation">]</span></code></pre>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

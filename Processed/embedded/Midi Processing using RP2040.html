@@ -1,0 +1,280 @@
+<html>
+
+   <head>
+
+      <title>Basic USB MIDI on RP2040</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="basic-usb-midi-on-rp2040">Basic USB MIDI on RP2040</h1>
+
+<p>This is the start of a project where the goal is to take midi values in from a controller (i.e. a midi keyboard) to use as pitch values for a drum controller, which then passes data thorugh to a computer running a synthesizer plugin. The goal is to have a working performance device suitable for live shows.</p>
+
+<h2 class="atx" id="using-the-arduino-ide">Using the Arduino IDE</h2>
+
+<p>To start I have a Adafruit Feather RP2040 lying around and wanted to get it recognized as a midi device. With Arduino MIDI library this is pretty fast and painless.</p>
+
+<pre><code class="fenced-code-block language-Cpp">#include &lt;Adafruit_TinyUSB.h&gt;
+
+#include &lt;MIDI.h&gt;
+
+
+
+// Create USB Midi instance
+
+Adafruit_USBD_MIDI midi;
+
+MIDI_CREATE_INSTANCE(Adafruit_USBD_MIDI, midi, MIDIusb);
+
+
+
+void setup(){
+
+&nbsp;&nbsp;&nbsp;&nbsp;// Broadcast on all channels
+
+    MIDIusb.begin(MIDI_CHANNEL_OMNI);
+
+&nbsp;&nbsp;&nbsp;&nbsp;// Turn off echo
+
+&nbsp;&nbsp;&nbsp;&nbsp;MIDIusb.turnThruOff();
+
+}
+
+
+
+void loop(){
+
+&nbsp;&nbsp;&nbsp;&nbsp;int pitch = 35;
+
+&nbsp;&nbsp;&nbsp;&nbsp;int velocity = 100;
+
+&nbsp;&nbsp;&nbsp;&nbsp;int channel = 1;
+
+&nbsp;&nbsp;&nbsp;&nbsp;// Send note on
+
+    MIDIusb.sendNoteOn(pitch, velocity, channel);
+
+&nbsp;&nbsp;&nbsp;&nbsp;delay(200);
+
+&nbsp;&nbsp;&nbsp;&nbsp;// Send note off
+
+&nbsp;&nbsp;&nbsp;&nbsp;MIDIusb.sendNoteOff(pitch, velocity, channel);
+
+&nbsp;&nbsp;&nbsp;&nbsp;delay(1000);
+
+}</code></pre>
+
+<p>This has to run through the USB stack <code>TinyUSB</code> which is under <code>Tools-&gt;USB Stack</code>. It is recognized on pure data which I'm using as a simple midi analyzer.</p>
+
+<h2 class="atx" id="rust">Rust</h2>
+
+<p>I am interested in embedded rust development, so this seems like a well scoped project to look into some of the rust frameworks. There is a simple example using a pico to send midi messages here <a href="https://github.com/madskjeldgaard/rust-pico-midi-controller/tree/main">Mads Kleldgaard's Pico Midi Controller</a></p>
+
+<p>First I cloned the <a href="https://github.com/rp-rs/rp2040-project-template">RP2040 template</a>, installed the tools listed. I added <code>usb-device</code> and <code>usbd-midi</code> and changed <code>.cargo/config.toml</code> to set the runner from <code>probe-rs</code> to <code>elf2uf2-rs -d</code> . The runner allows you to upload via the onboard usb port using the uf2 bootloader, instead of using a standalone debugger. This is faster for my purposes, but also means no onboard debugging. It also means having to press the boot and reset buttons in sequence on every upload, annoying but not bad for a small project.</p>
+
+<p>Mads' example no longer works immediately since <code>usbd-midi</code> changed some basic class names. But setting up the USB class now looks like:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token comment">// Load usb bus</span>
+
+<span class="token keyword">let</span> usb_bus <span class="token operator">=</span> <span class="token class-name">UsbBusAllocator</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token class-name">UsbBus</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span>
+
+        pac<span class="token punctuation">.</span><span class="token constant">USBCTRL_REGS</span><span class="token punctuation">,</span>
+
+        pac<span class="token punctuation">.</span><span class="token constant">USBCTRL_DPRAM</span><span class="token punctuation">,</span>
+
+        clocks<span class="token punctuation">.</span>usb_clock<span class="token punctuation">,</span>
+
+        <span class="token boolean">true</span><span class="token punctuation">,</span>
+
+        <span class="token operator">&amp;</span><span class="token keyword">mut</span> pac<span class="token punctuation">.</span><span class="token constant">RESETS</span><span class="token punctuation">,</span>
+
+    <span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+<span class="token comment">// Setup midi device</span>
+
+<span class="token comment">// Create MIDI class with 1 input and 1 output jack</span>
+
+<span class="token keyword">let</span> <span class="token keyword">mut</span> midi <span class="token operator">=</span> <span class="token class-name">UsbMidiClass</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>usb_bus<span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">,</span> <span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+<span class="token comment">// USB device</span>
+
+<span class="token keyword">let</span> <span class="token keyword">mut</span> usb_dev <span class="token operator">=</span> <span class="token class-name">UsbDeviceBuilder</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>usb_bus<span class="token punctuation">,</span> <span class="token class-name">UsbVidPid</span><span class="token punctuation">(</span><span class="token number">0x16C0</span><span class="token punctuation">,</span> <span class="token number">0x5E4</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">.</span><span class="token function">device_class</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">.</span><span class="token function">device_sub_class</span><span class="token punctuation">(</span><span class="token number">0</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">.</span><span class="token function">strings</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token punctuation">[</span><span class="token class-name">StringDescriptors</span><span class="token punctuation">::</span><span class="token function">default</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+                <span class="token punctuation">.</span><span class="token function">manufacturer</span><span class="token punctuation">(</span><span class="token string">"Angel Process"</span><span class="token punctuation">)</span>
+
+                <span class="token punctuation">.</span><span class="token function">product</span><span class="token punctuation">(</span><span class="token string">"MIDI Chord Drums"</span><span class="token punctuation">)</span>
+
+                <span class="token punctuation">.</span><span class="token function">serial_number</span><span class="token punctuation">(</span><span class="token string">"12345678"</span><span class="token punctuation">)</span><span class="token punctuation">]</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+        <span class="token punctuation">.</span><span class="token function">build</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span></code></pre>
+
+<p>And running the main loop looks like this:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">let</span> <span class="token keyword">mut</span> next_toggle <span class="token operator">=</span> timer<span class="token punctuation">.</span><span class="token function">get_counter</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">ticks</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">+</span> <span class="token number">500_000</span><span class="token punctuation">;</span>
+
+<span class="token keyword">let</span> <span class="token keyword">mut</span> led_on <span class="token operator">=</span> <span class="token boolean">false</span><span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">let</span> <span class="token keyword">mut</span> mnote <span class="token operator">=</span> <span class="token number">0</span><span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">loop</span> <span class="token punctuation">{</span>
+
+        <span class="token comment">// Poll the USB device and MIDI class</span>
+
+        <span class="token keyword">if</span> usb_dev<span class="token punctuation">.</span><span class="token function">poll</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token punctuation">[</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> midi<span class="token punctuation">]</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+            <span class="token comment">// Handle MIDI events here</span>
+
+            <span class="token macro property">info!</span><span class="token punctuation">(</span><span class="token string">"Handling midi events"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+
+
+        <span class="token keyword">let</span> now <span class="token operator">=</span> timer<span class="token punctuation">.</span><span class="token function">get_counter</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">ticks</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token keyword">if</span> now <span class="token operator">&gt;=</span> next_toggle <span class="token punctuation">{</span>
+
+            next_toggle <span class="token operator">+=</span> <span class="token number">500_000</span><span class="token punctuation">;</span> <span class="token comment">// Schedule next toggle in 500 ms</span>
+
+            <span class="token keyword">let</span> <span class="token keyword">mut</span> bytes <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token number">0</span><span class="token punctuation">;</span> <span class="token number">3</span><span class="token punctuation">]</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">if</span> led_on <span class="token punctuation">{</span>
+
+                <span class="token comment">// Note off</span>
+
+                <span class="token macro property">info!</span><span class="token punctuation">(</span><span class="token string">"off!"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                led_pin<span class="token punctuation">.</span><span class="token function">set_low</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+                <span class="token comment">// Send MIDI Note Off message for note 48 (C3)</span>
+
+                <span class="token keyword">let</span> channel <span class="token operator">=</span> <span class="token class-name">Channel</span><span class="token punctuation">::</span><span class="token constant">C1</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> note <span class="token operator">=</span> <span class="token class-name">Note</span><span class="token punctuation">::</span><span class="token function">from</span><span class="token punctuation">(</span>mnote<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> velocity <span class="token operator">=</span> <span class="token class-name">Value7</span><span class="token punctuation">::</span><span class="token function">from</span><span class="token punctuation">(</span><span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> note_off <span class="token operator">=</span> <span class="token class-name">MidiMessage</span><span class="token punctuation">::</span><span class="token class-name">NoteOff</span><span class="token punctuation">(</span>channel<span class="token punctuation">,</span> note<span class="token punctuation">,</span> velocity<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+                <span class="token keyword">if</span> mnote <span class="token operator">==</span> <span class="token number">11</span><span class="token punctuation">{</span>
+
+                 mnote <span class="token operator">=</span> <span class="token number">0</span><span class="token punctuation">;</span>   
+
+                <span class="token punctuation">}</span>
+
+                <span class="token keyword">else</span><span class="token punctuation">{</span>
+
+                    mnote <span class="token operator">+=</span> <span class="token number">1</span><span class="token punctuation">;</span>
+
+                <span class="token punctuation">}</span>
+
+
+
+                note_off<span class="token punctuation">.</span><span class="token function">render_slice</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> bytes<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token punctuation">}</span> <span class="token keyword">else</span> <span class="token punctuation">{</span>
+
+                <span class="token comment">// Note on</span>
+
+                <span class="token macro property">info!</span><span class="token punctuation">(</span><span class="token string">"on!"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                led_pin<span class="token punctuation">.</span><span class="token function">set_high</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+                <span class="token comment">// Send MIDI Note On message for note 48 (C3)</span>
+
+                <span class="token keyword">let</span> channel <span class="token operator">=</span> <span class="token class-name">Channel</span><span class="token punctuation">::</span><span class="token constant">C1</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> note <span class="token operator">=</span> <span class="token class-name">Note</span><span class="token punctuation">::</span><span class="token function">from</span><span class="token punctuation">(</span>mnote<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> velocity <span class="token operator">=</span> <span class="token class-name">Value7</span><span class="token punctuation">::</span><span class="token function">from</span><span class="token punctuation">(</span><span class="token number">100</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                <span class="token keyword">let</span> note_on <span class="token operator">=</span> <span class="token class-name">MidiMessage</span><span class="token punctuation">::</span><span class="token class-name">NoteOn</span><span class="token punctuation">(</span>channel<span class="token punctuation">,</span> note<span class="token punctuation">,</span> velocity<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+                note_on<span class="token punctuation">.</span><span class="token function">render_slice</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> bytes<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token punctuation">}</span>
+
+
+
+            <span class="token keyword">let</span> packet <span class="token operator">=</span> <span class="token class-name">UsbMidiEventPacket</span><span class="token punctuation">::</span><span class="token function">try_from_payload_bytes</span><span class="token punctuation">(</span><span class="token class-name">CableNumber</span><span class="token punctuation">::</span><span class="token class-name">Cable0</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span>bytes<span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">let</span> _result <span class="token operator">=</span> midi<span class="token punctuation">.</span><span class="token function">send_packet</span><span class="token punctuation">(</span>packet<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+            led_on <span class="token operator">=</span> <span class="token operator">!</span>led_on<span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span></code></pre>
+
+<p>As Mads observed, putting a delay in the main loop throws a USB error. They observed this for Mac, but it seems to also hold true for Windows.</p>
+
+<p>This functionally can send MIDI messages to a host computer, which is satisfying progress for me for now. Next is to parse midi in data from both the host computer and a separate device, as well as to read in sensor data to act as triggers.</p>
+
+<h1 class="atx" id=""></h1>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
