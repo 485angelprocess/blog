@@ -1,0 +1,15 @@
+body{
+  background-image: url("img/background.jpg");
+  margin:auto;
+}
+
+div{
+  margin: auto;
+  margin-top: 2em;
+  margin-bottom: 2em;
+  background-color: #FFFFFF;
+  opacity: 1.0;
+  padding: 1em;
+  width: 20em;
+  border: solid; 
+}
