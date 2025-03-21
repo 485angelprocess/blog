@@ -2,7 +2,7 @@
 
    <head>
 
-      <title>String Resonance VST</title>
+      <title>String Resonance Plugin</title>
 
       
 
@@ -36,7 +36,7 @@
 
     
 
-      <article class="markdown-body"><h1 class="atx" id="string-resonance-vst">String Resonance VST</h1>
+      <article class="markdown-body"><h1 class="atx" id="string-resonance-for-audio">String Resonance Plugin</h1>
 
 <p>I'm interested in audio effects using string resonance. Digitally modeling a string can be done using a delay line and a low pass filter.  This is the Karplus-Strong algorithm,</p>
 
@@ -46,7 +46,7 @@
 
 <p>A quick testing model can be made in pure data. This allows a quick way to get baseline parameters and play with the audio. The input is a short burst of noise, which simulates a pluck.</p>
 
-<p><img alt="pd_string.png" src="file:///C:/Users/magen/Documents/Blog/Resources/string_resonance/pd_string.png"></p>
+<p><img alt="" src="../../Resources/string_resonance/pd_string.png"></p>
 
 <p>With a basic model to go back to, I can start implementing on different platforms to improve playability.</p>
 
@@ -562,7 +562,7 @@
 
 
 
-        <span class="token comment">// Process each sample</span>
+        <span class="token comment">// Get each contribution</span>
 
         <span class="token keyword">for</span> sample <span class="token keyword">in</span> channel_samples<span class="token punctuation">{</span>
 
@@ -610,7 +610,7 @@
 
 <p>Without a frontend, most daws render plugins with slider/dropdown widgets.</p>
 
-<p><img alt="basic_clap.png" src="file:///C:/Users/magen/Documents/Blog/Resources/string_resonance/basic_clap.png"></p>
+<p><img alt="" src="../../Resources/string_resonance/basic_clap.png"></p>
 
 <h2 class="atx" id="build-details">Build details</h2>
 
