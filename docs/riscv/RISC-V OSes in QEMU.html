@@ -1,0 +1,258 @@
+<html>
+
+   <head>
+
+      <title>RISC-V OSes in QEMU</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="risc-v-oses-in-qemu">RISC-V OSes in QEMU</h1>
+
+<p>This post is just about getting some OSes up in RISC-V. As much as I like running baremetal, it's nice to run some more abstracted software. The <a href="https://risc-v-getting-started-guide.readthedocs.io/en/latest/index.html">RISC-V - Getting Started Guide</a> has some very nice guides for it.</p>
+
+<h2 class="atx" id="zephyr">Zephyr</h2>
+
+<p> <a href="https://docs.zephyrproject.org/latest/index.html">Zephyr</a> is a security-minded RTOS for embedded systems. I haven't ended up using it but it'll be nice to check out. For most of my use cases, I have mainly had a smaller, unsophisticated mcu, or just a computer running linux, but most of things I've worked on are quick turnaround one offs. Adding some sophistication and options can really help for longer and wider-scope projects. Most of my projects also had the worst security failure to be that the lights were the wrong color. Anyway, following the RISC-V docs, I installed dependencies.</p>
+
+<pre><code class="fenced-code-block language-bash">sudo apt-get install --no-install-recommends git cmake ninja-build gperf \
+
+  ccache dfu-util device-tree-compiler wget python3-pip python3-setuptools \
+
+  python3-wheel xz-utils file make gcc gcc-multilib</code></pre>
+
+<p>After checking the <a href="https://docs.zephyrproject.org/latest/develop/getting_started/index.html">zephyr getting started guide</a>. I created a virtual environment to silo off the python requirements. Zephyr uses <code>west</code> which they made for meta management.</p>
+
+<p>Creating a virtual environment:</p>
+
+<pre><code class="fenced-code-block language-bash">$ mkdir zephyr
+
+$ cd zephyr
+
+$ python3 -m venv .venv</code></pre>
+
+<p>Activate the environment:</p>
+
+<pre><code class="fenced-code-block language-bash">$ source .venv/bin/activate</code></pre>
+
+<p>Once in the virtual environment, python packages will only be installed in that scope. First install <code>west</code></p>
+
+<pre><code class="fenced-code-block language-bash">$ pip install west</code></pre>
+
+<p>And then get the source code:</p>
+
+<pre><code class="fenced-code-block language-bash"># in ur projects parent directory
+
+$ west init zephyr
+
+$ cd zephyr
+
+$ west update</code></pre>
+
+<p>Then I exported the CMake package:</p>
+
+<pre><code class="fenced-code-block language-bash">$ west zephyr-export</code></pre>
+
+<p>And installed python dependencies and sdk</p>
+
+<pre><code class="fenced-code-block language-bash">$ west packages pip --install</code></pre>
+
+<p>And installed the sdk, I had to run around the permissions/virtual environment issue and this workaround was functional.</p>
+
+<pre><code class="fenced-code-block language-bash">$ sudo -E PATH="$PATH" west sdk install --install-dir /opt/zephyr-sdk</code></pre>
+
+<p>That is everything installed! Now I can run an example:</p>
+
+<pre><code class="fenced-code-block language-bash">$ mkdir build-example
+
+$ cd build-example
+
+$ cmake -DBOARD=qemu_riscv32 $ZEPHYR_BASE/samples/hello_world
+
+$ make -j $(nproc)</code></pre>
+
+<p>Note that <code>$ZEPHYR_BASE</code> is set to the location of the <code>zephyr</code> folder which was made with <code>west init</code>.</p>
+
+<p>and run:</p>
+
+<pre><code class="fenced-code-block language-bash">$ make run</code></pre>
+
+<p>And we get output!</p>
+
+<pre><code class="fenced-code-block language-bash">[QEMU] CPU: riscv64
+
+*** Booting Zephyr OS build v4.1.0-1109-g8b77098ca135 ***
+
+Hello World! qemu_riscv64/qemu_virt_riscv64</code></pre>
+
+<p>I'll circle back to Zephyr again, it has some nice features I saw while looking around waiting for installs and downloads. The integrated test environment seems particularly interesting, having never really found a fast and good testing framework for embedded systems.</p>
+
+<h2 class="atx" id="linux">Linux</h2>
+
+<p>Yay linux! I also just wanted to get a basic linux OS up. This workflow requires <code>qemu</code>, <code>linux</code>, <code>busybox</code> and the rust toolchain which I had already installed from source. <a href="https://www.busybox.net/about.html">Busybox</a> is a nice set of UNIX utilities for embedded development.</p>
+
+<p>First I downloaded the sources:</p>
+
+<pre><code class="fenced-code-block language-bash">$ git clone https://github.com/torvalds/linux
+
+$ git clone https://git.busybox.net/busybox</code></pre>
+
+<p>I already have QEMU setup, so then I built and compiled linux for a RISC-V target:</p>
+
+<pre><code class="fenced-code-block language-bash">$ cd linux
+
+$ make ARCH=riscv CROSS_COMPILE=riscv64-unknown-linux-gnu- defconfig
+
+$ make ARCH=riscv CROSS_COMPILE=riscv64-unknown-linux-gnu- -j $(nproc)
+
+
+
+</code></pre>
+
+<p>And then built busybox</p>
+
+<pre><code class="fenced-code-block language-bash">$ cd busybox
+
+$ CROSS_COMPILE=riscv64-unknown-linux-gnu- make defconfig
+
+$ CROSS_COMPILE=riscv64-unknown-linux-gnu- make -j $(nproc)</code></pre>
+
+<p>Then to run my QEMU machine:</p>
+
+<pre><code class="fenced-code-block language-bash">$ sudo qemu-system-riscv64 -nographic -machine virt \
+
+     -kernel linux/arch/riscv/boot/Image -append "root=/dev/vda ro console=ttyS0" \
+
+     -drive file=busybox/busybox,format=raw,id=hd0 \
+
+     -device virtio-blk-device,drive=hd0</code></pre>
+
+<p>So this is from the RISC-V docs, and something has changed, I get a kernel panic trying to mound <code>/dev/vda</code>. </p>
+
+<p>The reason looks like I don't have a filesystem setup. Going from this <a href="https://risc-v-machines.readthedocs.io/en/latest/linux/simple/">source</a>, I create a filesystem structure:</p>
+
+<pre><code class="fenced-code-block language-bash">mkdir initramfs
+
+cd initramfs
+
+mkdir -p {bin,sbin,dev,etc,home,mnt,proc,sys,usr,tmp}
+
+mkdir -p usr/{bin,sbin}
+
+mkdir -p proc/sys/kernel
+
+cd dev
+
+sudo mknod sda b 8 0 
+
+sudo mknod console c 5 1
+
+cd ..</code></pre>
+
+<p>I copy the <code>busybox</code> executable into bin and then create the filesystem:</p>
+
+<pre><code class="fenced-code-block language-bash">$ find . -print0 | cpio --null -ov --format=newc | gzip -9 &gt; initramfs.cpio.gz</code></pre>
+
+<p>And I try to run </p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-riscv64 -nographic -machine virt \
+
+  -kernel linux/arch/riscv/boot/Image \
+
+  -initrd initramfs/initramfs.cpio.gz \
+
+  -append "console=ttyS0"</code></pre>
+
+<p>Which still gives me a similarly panic, so I'm missing something. After looking through a few forums which really didn't give a clear answer, I got to this post <a href="https://embeddedinn.com/articles/tutorial/Linux-Python-on-RISCV-using-QEMU-from-scratch/">Linux &amp; Python on RISC-V using QEMU from scratch</a>. Instead of making the init filesystem a regular file, they created a null disk and created the filesystem in there.</p>
+
+<p>Creating the NULL disk and formatting it:</p>
+
+<pre><code class="fenced-code-block language-bash">$ dd if=/dev/zero of=root.bin bs=1M count=64
+
+$ mkfs.ext2 -F root.bin</code></pre>
+
+<p>And setting setting up the fs, and setting busybox as the init:</p>
+
+<pre><code class="fenced-code-block language-bash">mkdir mnt
+
+sudo mount -o loop root.bin mnt
+
+cd mnt 
+
+sudo mkdir -p bin etc dev lib proc sbin tmp usr usr/bin usr/lib usr/sbin
+
+sudo cp ~/busybox/busybox bin
+
+sudo ln -s ../bin/busybox sbin/init
+
+sudo ln -s ../bin/busybox bin/sh
+
+cd ..
+
+sudo umount mnt</code></pre>
+
+<p>Then I was able to launch QEMU with this command:</p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-riscv64 -nographic -machine virt \
+
+                    -kernel linux/arch/riscv/boot/Image \
+
+                    -append "root=/dev/vda rw console=ttyS0" \
+
+                    -drive file=root.bin,format=raw,id=hd0 \
+
+                    -device virtio-blk-device,drive=hd0</code></pre>
+
+<p>I'm not sure if the difference was my QEMU configuration, or if this was implicityl set up somewhere else. Bouncing around forums, it seems there are some toolkits for getting linux up and running, but this does launch. When QEMU boots, I get a console terminal. Install busybox tools using:</p>
+
+<pre><code class="fenced-code-block language-bash"># /bin/busybox --install -s</code></pre>
+
+<p>Now I have access to basic unix utilities in a RISCV environment.</p>
+
+<pre><code class="fenced-code-block language-bash"># uname -a
+
+Linux (none) 6.12.0 #2 SMP Sat Mar 22 11:24:52 EDT 2025 riscv64 GNU/Linux</code></pre>
+
+<p>That's good progress for today. It's nice to have all these little containers running architectures.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
