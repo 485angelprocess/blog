@@ -1,6 +1,7 @@
 body{
-  width: 40%;
+  width: 80%;
   min-width: 40em;
+  max-width: 60em;
   margin:auto;
   background-color: #FFFFFF;
   color: #000c14;

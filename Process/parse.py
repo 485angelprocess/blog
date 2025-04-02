@@ -90,7 +90,7 @@ class ArticleEntry(object):
         
 
 class SiteBuilder(object):
-    def __init__(self, root = "../Export", processed = "../Processed"):
+    def __init__(self, root = "../Export", processed = "../docs"):
         self.root = root
         self.processed = processed
         
