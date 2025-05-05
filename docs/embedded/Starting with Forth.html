@@ -1,0 +1,88 @@
+<html>
+
+   <head>
+
+      <title>Starting with Forth</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: May 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="starting-with-forth">Starting with Forth</h1>
+
+<p>I somehow gotten into reading about Forth, a programming language first developed by Charles Moore in 1970. There are quite a lot variations of Forth which have been developed. Part of Forth was an editing environment built specifically around it. At some point Moore was also interested in making it a standalone OS or OS-less program and environment. I checked out two versions, Gforth, and SwiftForth. I am interested in looking into ColorForth, which is Moore's ongoing project, although the implementations for that are hardware specific. Gforth is an open source implementation, while SwiftForth is a more profressional proprietary implementation.</p>
+
+<p>The installation instructions for Gforth are here: <a href="https://gforth.org/">https://gforth.org/</a>. Using the tarball mirror:</p>
+
+<pre><code class="fenced-code-block language-bash">$ wget https://www.complang.tuwien.ac.at/forth/gforth/Snapshots/current/gforth.tar.xz
+
+$ tar xvfJ gforth.tar.xz
+
+$ cd gforth-*
+
+$ ./install-deps.sh
+
+$ ./configure
+
+$ make
+
+$ sudo make install</code></pre>
+
+<p>Starting with a simple hello world. First I can invoke the Gforth environment with <code>gforth</code>. Then hello world is <code>." hello, world"</code>, Forth is whitespace sensitive, so the leading space of hello is required. Note that <code>."</code> is a word, which waits for the end of the word with a special delimiter <code>"</code>, which is why <code>."hello world"</code> fails, because the interpreter tries to read <code>."hello</code> as the first word.</p>
+
+<p>Next I can start working with the stack. One of the things that interested me in Forth is it designed much less abstractly with regards to how computers process information than later languages. It's nice to see some snapshots of how that abstraction has developed over time within programming language methodology. Any number that is typed is put on the stack, and the stack is displayed with <code>.s</code> or the the top of the stack with <code>.</code> . Words consume their stack, which is much closer to what is happening at the assembly level, where arguments are placed in the arguments proceeding the call of a routine or function.</p>
+
+<p>Forth has arithmetic words, <code>+</code>, <code>-</code>, <code>*</code>, <code>/</code> and <code>mod</code>. They act on the top two stack items. <code>2 2 +</code> will result in 4 being at the top of the stack. <code>/mod</code> produced two result, the result and the remainder of the integer division. There is also the <code>negate</code> word which flips the sign of the top of the stack.</p>
+
+<p>Stack manipulation is done with several words. <code>drop</code> removes the top of the stack. <code>dup</code> duplicates the top. <code>over</code> duplicates the bottom of the stack into the top.  <code>swap</code> switches the first and second values in the stack, and <code>rot</code> rotates the top three stack matrices.</p>
+
+<p>Colon definitions can be used to create procedures and functions.</p>
+
+<pre><code class="fenced-code-block language-forth">: squared ( n -- n^2 )
+
+&nbsp;&nbsp;&nbsp;&nbsp;dup * ;</code></pre>
+
+<p><code>( n -- n^2 )</code> is a comment. This definition creates a new word which will act on the stack. There is some additional discussion of definitions versus macros on this page <a href="https://net2o.de/gforth/Colon-Definitions.html">Colon Definitions (Gforth Manual)</a>. A defined word can be used as any other word. The do</p>
+
+<p>That's some of the basics, it was pretty easy to get running, next I want to look into the debugging options. Initially I'm getting slightly confused on how to use them, so it'll be another day.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
