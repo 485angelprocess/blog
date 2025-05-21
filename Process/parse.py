@@ -80,8 +80,6 @@ class ArticleEntry(object):
         
         #print("Article {}".format(template.format(title = self.title, article = self.body)))
         
-        
-        
         with open(dest, 'x') as f:
             f.write(template.format(
                             title = self.title, 
