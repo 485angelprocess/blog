@@ -1,0 +1,282 @@
+<html>
+
+   <head>
+
+      <title>Transputer Emulation</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="transputer-emulation">Transputer Emulation</h1>
+
+<p>One of the architectures I'm interested in are transputers. They are an alternative and dead architecture from the 90s which use parallel mcus to run programs. Each MCU has a serial connection to adjacent MCUs.</p>
+
+<p><img alt="transputer_0.jpg" src="file:///C:/Users/magen/Documents/Blog/Resources/transputer_0.jpg"></p>
+
+<p><img alt="transputer_2.png" src="file:///C:/Users/magen/Documents/Blog/Resources/transputer_2.png"></p>
+
+<p>I am interested in what can be learned from an alternative parallel architecture, how the language interacts with a different underlying hardware and the potential for modular computing.</p>
+
+<p>Some websites I looked at, there's an overwhelming from a wide range of perspectives, so I haven't looked too closely at anything yet.</p>
+
+<ul>
+
+<li><p><a href="https://www.transputer.net">https://www.transputer.net</a> - variety of transputer documentation</p>
+
+</li>
+
+<li><p><a href="https://sites.google.com/site/transputeremulator/Home?authuser=0">https://sites.google.com/site/transputeremulator/Home?authuser=0</a> - transputer emulator</p>
+
+</li>
+
+<li><p><a href="https://nanochess.org/bootstrapping_c_os_transputer.html">Porting Small-C to transputer and developing my operating system</a> - transputer os</p>
+
+</li>
+
+</ul>
+
+<p><img alt="transputer_1.jpg" src="file:///C:/Users/magen/Documents/Blog/Resources/transputer_1.jpg"></p>
+
+<p>To start with this investigation I want to try to get an emulator up and running. I both got jserver, which is an emulator which can run the T414/T400/T425/T800/T805 type transputers. I also got Oscar Toledo's basic emulator up. Oscar's installation instructions are here: <a href="https://github.com/nanochess/transputer">GitHub - nanochess/transputer: Transputer T805 emulator, assembler, Pascal compiler, operating system, and K&amp;R C compiler.</a> The setup for this was very painless on my linux machine, fora revived project from the 90s, it went up immediately. It reminds me of being surprised at how easy it was to work on a DOS CNC machine. I want to return to looking at this, but I want to look a little at the Occam programming language, which is featured in the jserver emulator.</p>
+
+<p><img alt="transputer_emulator.png" src="file:///C:/Users/magen/Documents/Blog/Resources/transputer_emulator.png"></p>
+
+<p>For jserver, I followed the steps here: <a href="https://sites.google.com/site/transputeremulator/Home/jserver/installation-instructions?authuser=0">https://sites.google.com/site/transputeremulator/Home/jserver/installation-instructions?authuser=0</a>. Getting hello world to work was fast. Then I set up the Occam toolset.</p>
+
+<p>Occam is designed for transputers, so it also exposes some of the interesting points of them. Let's look at the <code>hello.occ</code> program.</p>
+
+<pre><code class="fenced-code-block language-occam">#INCLUDE "hostio.inc" --  -- contains SP protocol
+
+PROC hello (CHAN OF SP fs, ts )
+
+  #USE "hostio.lib"
+
+  SEQ
+
+    so.write.string.nl    (fs, ts, "Hello world...")
+
+    so.exit           (fs, ts, sps.success)
+
+:</code></pre>
+
+<p>Looking at the <a href="https://www.eg.bucknell.edu/~cs366/occam.pdf">Introduction to the Programming Language Occam</a>, I can breakthis down a little bit. </p>
+
+<p><code>#INCLUDE "hostio.inc"</code> gives us the serial protocols we need, especially those which can write to the output terminal.</p>
+
+<p>A process (<code>PROC</code> ) is the basic element, processes can be, but aren't necessarily concurrent. Processes can only share date through a channel. This means there is no shared variables. </p>
+
+<p><img alt="Screenshot 2025-03-31 112448.png" src="file:///C:/Users/magen/Documents/Blog/Resources/Screenshot%202025-03-31%20112448.png"></p>
+
+<p>The <code>CHAN</code> type defines a channel. In the main body of the process we use the <code>hostio.lib</code> to write to the serial channel.</p>
+
+<p>Now I slightly more complicated program which computes the square roots.</p>
+
+<p>While getting this running, I edited some of the scripts, essentially just making them use arguments to make building better. The make stage is from the mk.bat script, which is run using <code>mk.bat hello</code> or <code>mk.bat root</code></p>
+
+<pre><code class="fenced-code-block language-batch"><span class="token command"><span class="token keyword">imakef</span> <span class="token variable">%1</span>.btl <span class="token parameter attr-name">/o</span> <span class="token variable">%1</span>.mak</span></code></pre>
+
+<p>This runs make to create btl and mak files. I also need the emulator description, and entry point defined. This is from the example hello file.</p>
+
+<pre><code class="fenced-code-block">-- hardware description, omitting host connection
+
+
+
+VAL k IS 1024 :
+
+VAL m IS k * k :
+
+
+
+NODE test.bed.p :  -- declare processor
+
+ARC hostlink :
+
+NETWORK example
+
+  DO
+
+    SET test.bed.p (type, memsize := "T414", 2 * m )
+
+    CONNECT test.bed.p[link][0] TO HOST WITH hostlink
+
+
+
+:
+
+
+
+-- mapping
+
+NODE application:
+
+MAPPING
+
+  DO
+
+    MAP application ONTO test.bed.p
+
+:
+
+
+
+-- software description
+
+#INCLUDE "hostio.inc"
+
+#USE "hello.cah"
+
+CONFIG
+
+  CHAN OF SP fs, ts :
+
+  PLACE fs, ts ON hostlink :
+
+  PLACED PAR
+
+    PROCESSOR application
+
+      hello ( fs, ts )
+
+:
+
+</code></pre>
+
+<p>Then the program is built using <code>build.bat</code></p>
+
+<pre><code class="fenced-code-block language-batch"><span class="token comment">REM Borland make</span>
+
+<span class="token comment">REM omake -f%1.mak</span>
+
+<span class="token comment">REM</span>
+
+<span class="token comment">REM WATCOM wmake</span>
+
+<span class="token comment">REM wmake -f %1.mak -ms</span>
+
+<span class="token comment">REM</span>
+
+<span class="token comment">REM Microsoft nmake</span>
+
+<span class="token command"><span class="token keyword">nmake</span> <span class="token parameter attr-name">-f</span> <span class="token variable">%1</span>.</span></code></pre>
+
+<p>This is just running <code>nmake</code> , everything else is a comment for older oses.</p>
+
+<p>Some notes on getting occam to compile.</p>
+
+<ul>
+
+<li><p>All keywords are capitalized</p>
+
+</li>
+
+<li><p>It is very whitespace-sensitive. Indentation seeems to be two spaces. Files need to end on a new-line.</p>
+
+</li>
+
+</ul>
+
+<p>This is a basic sequential program to calculate the square root.</p>
+
+<pre><code class="fenced-code-block">#INCLUDE "hostio.inc" -- contains SP protocol
+
+PROC msqrt (CHAN OF SP keyboard, screen)
+
+  #USE "hostio.lib" -- IO library
+
+  BYTE key,result:
+
+  REAL32 A:
+
+  SEQ
+
+    so.write.string.nl(keyboard, screen, "Value Square Root")
+
+    SEQ i = 1 FOR 10
+
+      SEQ
+
+        so.write.string(keyboard, screen, "i = ")
+
+        so.write.int(keyboard, screen, i, 2)
+
+        A := REAL32 ROUND i
+
+        so.write.real32(keyboard, screen, SQRT(A), 4, 6)
+
+        so.write.nl(keyboard, screen)
+
+    so.exit(keyboard, screen, sps.success)
+
+:
+
+</code></pre>
+
+<p>Running:</p>
+
+<pre><code class="fenced-code-block">Booting root transputer...ok
+
+Value Square Root
+
+i =  1    1.000000
+
+i =  2    1.414214
+
+i =  3    1.732051
+
+i =  4    2.000000
+
+i =  5    2.236068
+
+i =  6    2.449490
+
+i =  7    2.645751
+
+i =  8    2.828427
+
+i =  9    3.000000
+
+i = 10    3.162278</code></pre>
+
+<p>Not quite exploiting parallelism yet, but some progress and work into it.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

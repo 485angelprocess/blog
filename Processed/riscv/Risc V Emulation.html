@@ -1,0 +1,224 @@
+<html>
+
+   <head>
+
+      <title>Risc V Emulation</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: March 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="risc-v-emulation">Risc V Emulation</h1>
+
+<p>I'm interested in experimenting with some RISC-V assembly. To that end, I wanted to start making a workflow to run RISC-V in QEMU. I found two helpful blog posts <a href="https://twilco.github.io/riscv-from-scratch/2019/04/27/riscv-from-scratch-2.html#finding-our-stack">RISC-V from scratch 2: Hardware layouts, linker scripts, and C runtimes</a>, and <a href="https://mth.st/blog/riscv-qemu/">Hello, RISC-V and QEMU</a> to help guide me.</p>
+
+<p>To start I got distracted making my terminal cuter with <a href="https://ohmyz.sh/">https://ohmyz.sh/</a> and messing around with fonts. Then I started setting up my ubuntu machine. Running and debugging RISC-V requires QEMU and GDB server. The QEMU package is installed with</p>
+
+<pre><code class="fenced-code-block language-bash"><span class="token comment"># apt-get install qemu-system-riscv64</span></code></pre>
+
+<p>This can run a few different machines found with <code>$ qemu-system-riscv64 -machine help</code>. Then I installed compiler tools using the <a href="https://github.com/riscv-collab/riscv-gnu-toolchain">riscv-gnu-toolchain</a>. To summarize, clone the repository, install dependencies, configure and make.</p>
+
+<p>Next I wanted a minimal working program to check that things we're running. After my first hello world didn't produce anything, I looked at <a href="https://github.com/noteed/riscv-hello-c">this example</a>, which is intended to make assembly easier to build off. With no immediate luck I looked at this one <a href="https://github.com/noteed/riscv-hello-asm/tree/main">riscv-hello-asm</a>. A few posts mentioned that the stack memory location is not always linked correctly. So when I ran a qemu instance such as:</p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-riscv64 -nographic -machine sifive_u -bios none -kernel hello</code></pre>
+
+<p>The program I was trying to run was placed at some irrelevant location, and there was nothing for QEMU to work on.</p>
+
+<p>To find out where the device I'm running on places the stack, I dump the devicetree blob from QEMU.</p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-riscv64 -machine sifive_u -machine <span class="token assign-left variable">dumpdtb</span><span class="token operator">=</span>riscv-sifive.dtb</code></pre>
+
+<p>This creates a dtb file. This isn't immediately parseable, so I need use <code>dtc</code> (installed on ubuntu using <code>apt-get install device-tree-compiler</code>) There's a lot of information in the file, but since I'm interested in the location of the memory I can find using <code>grep</code> (+ 3 lines).</p>
+
+<pre><code class="fenced-code-block language-bash">$ <span class="token function">grep</span> memory riscv-sifive.dts -A <span class="token number">3</span>
+
+memory@80000000 <span class="token punctuation">{</span>
+
+   device_type <span class="token operator">=</span> <span class="token string">"memory"</span><span class="token punctuation">;</span>
+
+   reg <span class="token operator">=</span> <span class="token operator">&lt;</span>0x00 0x80000000 0x00 0x800000<span class="token operator"><span class="token file-descriptor important">0</span>&gt;</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span><span class="token punctuation">;</span></code></pre>
+
+<p>So our memory is at 0x80000000. In the riscv asm example the linker handles this.</p>
+
+<p>In <code>hello.ld</code>:</p>
+
+<pre><code class="fenced-code-block language-c"><span class="token function">OUTPUT_ARCH</span><span class="token punctuation">(</span> <span class="token string">"riscv"</span> <span class="token punctuation">)</span>
+
+<span class="token function">OUTPUT_FORMAT</span><span class="token punctuation">(</span><span class="token string">"elf64-littleriscv"</span><span class="token punctuation">)</span>
+
+<span class="token function">ENTRY</span><span class="token punctuation">(</span> _start <span class="token punctuation">)</span>
+
+SECTIONS
+
+<span class="token punctuation">{</span>
+
+  <span class="token comment">/* text: test code section */</span>
+
+  <span class="token punctuation">.</span> <span class="token operator">=</span> <span class="token number">0x80000000</span><span class="token punctuation">;</span>
+
+  <span class="token punctuation">.</span>text <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>text<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token comment">/* data: Initialized data segment */</span>
+
+  <span class="token punctuation">.</span>gnu_build_id <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>note<span class="token punctuation">.</span>gnu<span class="token punctuation">.</span>build<span class="token operator">-</span>id<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token punctuation">.</span>data <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>data<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token punctuation">.</span>rodata <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>rodata<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token punctuation">.</span>sdata <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>sdata<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token punctuation">.</span>debug <span class="token operator">:</span> <span class="token punctuation">{</span> <span class="token operator">*</span><span class="token punctuation">(</span><span class="token punctuation">.</span>debug<span class="token punctuation">)</span> <span class="token punctuation">}</span>
+
+  <span class="token punctuation">.</span> <span class="token operator">+=</span> <span class="token number">0x8000</span><span class="token punctuation">;</span>
+
+  stack_top <span class="token operator">=</span> <span class="token punctuation">.</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token comment">/* End of uninitalized data segment */</span>
+
+  _end <span class="token operator">=</span> <span class="token punctuation">.</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>This is still a little mysterious to me (having not done any real C in about 10 years). But it does work on QEMU.</p>
+
+<p>The actual assembly is from [riscv-hello-asm](<a href="https://github.com/noteed/riscv-hello-asm/tree/main">GitHub - noteed/riscv-hello-asm: Bare metal RISC-V assembly hello world</a>).</p>
+
+<pre><code class="fenced-code-block language-c"><span class="token punctuation">.</span>align <span class="token number">2</span>
+
+<span class="token punctuation">.</span>include <span class="token string">"cfg.inc"</span>
+
+<span class="token punctuation">.</span>equ UART_REG_TXFIFO<span class="token punctuation">,</span>   <span class="token number">0</span>
+
+
+
+<span class="token punctuation">.</span>section <span class="token punctuation">.</span>text
+
+<span class="token punctuation">.</span>globl _start
+
+
+
+_start<span class="token operator">:</span>
+
+        csrr  t0<span class="token punctuation">,</span> mhartid             # read hardware thread <span class="token function">id</span> <span class="token punctuation">(</span>`hart` stands <span class="token keyword">for</span> `hardware thread`<span class="token punctuation">)</span>
+
+        bnez  t0<span class="token punctuation">,</span> halt                # run only on the first hardware <span class="token function">thread</span> <span class="token punctuation">(</span>hartid <span class="token operator">==</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">,</span> halt all the other threads
+
+
+
+        la    sp<span class="token punctuation">,</span> stack_top           # setup stack pointer
+
+
+
+        la    a0<span class="token punctuation">,</span> msg                 # load address of `msg` to a0 argument <span class="token keyword">register</span>
+
+        jal   puts                    # jump to `puts` subroutine<span class="token punctuation">,</span> <span class="token keyword">return</span> address is stored in ra regster
+
+
+
+halt<span class="token operator">:</span>   j     halt                    # enter the infinite loop
+
+
+
+puts<span class="token operator">:</span>                                 # `puts` subroutine writes null<span class="token operator">-</span>terminated string to <span class="token function">UART</span> <span class="token punctuation">(</span>serial communication port<span class="token punctuation">)</span>
+
+                                      <span class="token macro property"><span class="token directive-hash">#</span> <span class="token directive keyword">input</span><span class="token expression"><span class="token operator">:</span> a0 <span class="token keyword">register</span> specifies the starting address of a null<span class="token operator">-</span>terminated string</span></span>
+
+                                      <span class="token macro property"><span class="token directive-hash">#</span> <span class="token directive keyword">clobbers</span><span class="token expression"><span class="token operator">:</span> t0<span class="token punctuation">,</span> t1<span class="token punctuation">,</span> t2 temporary registers</span></span>
+
+
+
+        li    t0<span class="token punctuation">,</span> UART_BASE           # t0 <span class="token operator">=</span> UART_BASE
+
+<span class="token number">1</span><span class="token operator">:</span>      lbu   t1<span class="token punctuation">,</span> <span class="token punctuation">(</span>a0<span class="token punctuation">)</span>                # t1 <span class="token operator">=</span> load <span class="token keyword">unsigned</span> byte from memory address specified by a0 <span class="token keyword">register</span>
+
+        beqz  t1<span class="token punctuation">,</span> <span class="token number">3f</span>                  # <span class="token keyword">break</span> the loop<span class="token punctuation">,</span> <span class="token keyword">if</span> loaded byte was null
+
+
+
+                                      <span class="token macro property"><span class="token directive-hash">#</span> <span class="token directive keyword">wait</span> <span class="token expression">until UART is ready</span></span>
+
+<span class="token number">2</span><span class="token operator">:</span>      lw    t2<span class="token punctuation">,</span> <span class="token function">UART_REG_TXFIFO</span><span class="token punctuation">(</span>t0<span class="token punctuation">)</span> # t2 <span class="token operator">=</span> uart<span class="token punctuation">[</span>UART_REG_TXFIFO<span class="token punctuation">]</span>
+
+        bltz  t2<span class="token punctuation">,</span> <span class="token number">2</span>b                  # t2 becomes positive once UART is ready <span class="token keyword">for</span> transmission
+
+        sw    t1<span class="token punctuation">,</span> <span class="token function">UART_REG_TXFIFO</span><span class="token punctuation">(</span>t0<span class="token punctuation">)</span> # send byte<span class="token punctuation">,</span> uart<span class="token punctuation">[</span>UART_REG_TXFIFO<span class="token punctuation">]</span> <span class="token operator">=</span> t1
+
+
+
+        addi  a0<span class="token punctuation">,</span> a0<span class="token punctuation">,</span> <span class="token number">1</span>               # increment a0 address by <span class="token number">1</span> byte
+
+        j     <span class="token number">1</span>b
+
+
+
+<span class="token number">3</span><span class="token operator">:</span>      ret
+
+
+
+<span class="token punctuation">.</span>section <span class="token punctuation">.</span>rodata
+
+msg<span class="token operator">:</span>
+
+     <span class="token punctuation">.</span>string <span class="token string">"Hello.\n"</span></code></pre>
+
+<p>Linking:</p>
+
+<pre><code class="fenced-code-block language-bash">$ riscv64-unknown-linux-gnu-gcc -march<span class="token operator">=</span>rv64g -mabi<span class="token operator">=</span>lp64 -static -mcmodel<span class="token operator">=</span>medany <span class="token punctuation">\</span>
+
+  -fvisibility<span class="token operator">=</span>hidden -nostdlib -nostartfiles -Tsifive_u/hello.ld -Isifive_u <span class="token punctuation">\</span>
+
+  hello.s -o hello</code></pre>
+
+<p>And running:</p>
+
+<pre><code class="fenced-code-block language-bash">$ qemu-system-riscv64 -nographic -machine sifive_u -bios none -kernel hello
+
+hello</code></pre>
+
+<p>Yay!  It's something! I'm going to come back to this in a bit, but at least I can get a little progress.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

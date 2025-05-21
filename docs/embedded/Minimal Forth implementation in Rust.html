@@ -1,0 +1,352 @@
+<html>
+
+   <head>
+
+      <title>Minimal Forth implementation in Rust</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: May 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="minimal-forth-implementation-in-rust">Minimal Forth implementation in Rust</h1>
+
+<p>I have been looking at forth a bit and wanted to start putting together some implementations of it. The language is structured so that a minimal implementation is very quick to do. My overall goal is to make a non-portable RISC-V implementation, with a built-in editor, but for now I am doing a portable version with no editor. I used <a href="https://github.com/zevv/zForth">zforth</a> as a main reference, also looking at gforth and colorForth as references.</p>
+
+<p>A core to forth is an extensible dictionary of words, so I want to start setting up a rust struct to handle the state of the program, with the ability to run primitives, and do stack operations. To get things up and running I wanted to try to keep things as simple as possible. The data stack is a <code>Vec</code>. I map the dictionary words using a HashMap, this is close to the zforth implementation, but I'm trying to use some more idiomatic rust as well. The first pass at the core struct is:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">type</span>  <span class="token type-definition class-name">BaseType</span> <span class="token operator">=</span> <span class="token keyword">i32</span><span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">pub</span> <span class="token keyword">struct</span> <span class="token type-definition class-name">Context</span><span class="token punctuation">{</span>
+
+    data_stack<span class="token punctuation">:</span> <span class="token class-name">Vec</span><span class="token operator">&lt;</span><span class="token class-name">BaseType</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
+
+    dict<span class="token punctuation">:</span> <span class="token class-name">HashMap</span><span class="token operator">&lt;</span><span class="token class-name">String</span><span class="token punctuation">,</span> <span class="token keyword">usize</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
+
+    prim<span class="token punctuation">:</span> <span class="token class-name">HashMap</span><span class="token operator">&lt;</span><span class="token keyword">usize</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token operator">&gt;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Pop and push operate on the stack:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">pop</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">BaseType</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span>data_stack<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">fn</span> <span class="token function-definition function">push</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> v<span class="token punctuation">:</span> <span class="token class-name">BaseType</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span>data_stack<span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>For now I'm populating the primitive dictionary at runtime. Literals and syscalls have specific rules for parsing, so I'm treating somewhat separately. This sets up a map from  an op number/address to a enum for the primitives. Later, I will add functionality for op numbers above the primitives for custom words. For now I just want to see a basic program running, so I'm only doing a few words:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">setup</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span>lit <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_implicit</span><span class="token punctuation">(</span><span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">LIT</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span>sys <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_implicit</span><span class="token punctuation">(</span><span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">SYS</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_prim</span><span class="token punctuation">(</span><span class="token string">"dup"</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">DUP</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_prim</span><span class="token punctuation">(</span><span class="token string">"*"</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">MUL</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>My parser is starting as this. I am going to tidy this up later, but it gets the op number and an optional argument. I see reasons to treat the argument as an <code>Option</code> or a mutable reference, which I'll decide on later.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">get_op</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> msg<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token class-name">String</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token punctuation">(</span><span class="token keyword">usize</span><span class="token punctuation">,</span> <span class="token keyword">i32</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+
+
+    <span class="token keyword">if</span> msg<span class="token punctuation">.</span><span class="token function">starts_with</span><span class="token punctuation">(</span><span class="token string">"."</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token comment">// System call/special functions</span>
+
+        <span class="token keyword">if</span> <span class="token keyword">let</span> <span class="token class-name">Some</span><span class="token punctuation">(</span>result<span class="token punctuation">)</span> <span class="token operator">=</span> msg<span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">nth</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+            <span class="token comment">// system call with specifier</span>
+
+            <span class="token comment">// These aren't implemented yet,</span>
+
+            <span class="token comment">// But ." is literal string</span>
+
+            <span class="token comment">// and .s displays the entire stack as examples</span>
+
+            <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>sys<span class="token punctuation">,</span> result<span class="token punctuation">.</span><span class="token function">try_into</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+        <span class="token keyword">else</span><span class="token punctuation">{</span>
+
+            <span class="token comment">// system call no argument</span>
+
+            <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>sys<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">if</span> <span class="token keyword">self</span><span class="token punctuation">.</span>dict<span class="token punctuation">.</span><span class="token function">contains_key</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token comment">// in dictionary of words</span>
+
+        <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>dict<span class="token punctuation">[</span>msg<span class="token punctuation">]</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token comment">// assume it is literal</span>
+
+    <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>lit<span class="token punctuation">,</span> msg<span class="token punctuation">.</span><span class="token function">parse</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>With the op number I can direct my interpreter to run a primitive or a custom word.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">parse</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> msg<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token class-name">String</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+
+
+    <span class="token comment">// get address of word with argument</span>
+
+    <span class="token keyword">let</span> <span class="token punctuation">(</span>op<span class="token punctuation">,</span> v<span class="token punctuation">)</span> <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">get_op</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token keyword">if</span> <span class="token keyword">self</span><span class="token punctuation">.</span>prim<span class="token punctuation">.</span><span class="token function">contains_key</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>op<span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">do_prim</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>prim<span class="token punctuation">[</span><span class="token operator">&amp;</span>op<span class="token punctuation">]</span><span class="token punctuation">,</span> v<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+    <span class="token keyword">else</span><span class="token punctuation">{</span>
+
+        <span class="token macro property">todo!</span><span class="token punctuation">(</span><span class="token string">"Custom words not implemented yet."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Primitives are treated as a switch. Each primitive is intended to be very simple to implement.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">do_prim</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> p<span class="token punctuation">:</span> <span class="token constant">PRIM</span><span class="token punctuation">,</span> v<span class="token punctuation">:</span> <span class="token class-name">BaseType</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">match</span> p<span class="token punctuation">{</span>
+
+        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">LIT</span> <span class="token operator">=&gt;</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">SYS</span> <span class="token operator">=&gt;</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">sys_call</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">DUP</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token comment">// Duplicate the top of the stack</span>
+
+            <span class="token keyword">let</span> v <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">,</span>
+
+        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">MUL</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token comment">// Multiply the top 2 numbers on the stack</span>
+
+            <span class="token keyword">let</span> a <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">let</span> b <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>a <span class="token operator">*</span> b<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">,</span>
+
+        _ <span class="token operator">=&gt;</span> <span class="token macro property">todo!</span><span class="token punctuation">(</span><span class="token string">"Not implemented {:?}"</span><span class="token punctuation">,</span> p<span class="token punctuation">)</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>With this setup, I can get my first extremely scoped program up. The program is:</p>
+
+<pre><code class="fenced-code-block language-forth">5 dup * .</code></pre>
+
+<p>This puts 5 on the stack, duplicates it, and the multiples, giving the square of 5. The <code>.</code> word pops the stack and prints the top value.</p>
+
+<p>The main function for my demo looks like:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    ctx<span class="token punctuation">.</span><span class="token function">setup</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token keyword">let</span> program <span class="token operator">=</span> <span class="token string">"5 dup * ."</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token comment">// go through program</span>
+
+    <span class="token keyword">for</span> p <span class="token keyword">in</span> program<span class="token punctuation">.</span><span class="token function">split</span><span class="token punctuation">(</span><span class="token string">" "</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+
+
+        <span class="token comment">//println!("{}, {}", p.to_string(), p.len());</span>
+
+        ctx<span class="token punctuation">.</span><span class="token function">parse</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>p<span class="token punctuation">.</span><span class="token function">to_string</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>This runs, printing out 25.</p>
+
+<h2 class="atx" id="testing">Testing</h2>
+
+<p>Next I started going through and adding tests for the basic functionality I was looking for. I am going to add some more coverage later, but wanted to highlight some of the basic tests. <code>dup</code> is a core stack operation for forth. To start, it should panic when there is nothing in the stack:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
+
+<span class="token attribute attr-name">#[should_panic]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">dup_requires_argument</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"dup ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Next it should function, by duplicating the top of the stack:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">dup</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"5 dup . ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">5</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">5</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>For now I just added an object to hold anything that gets sent to the <code>.</code> command. I am not entirely happy with it. Ideally I'll think I'll have system calls handled by a separate struct, so that the core can be more test-friendly. This is a consequence of working off a C program which was intended to small and complete, without any testing focus.</p>
+
+<p>I am adding several of these types of tests for other primitives. The other major functionality is working with new words. First I wanted to cover some of the basic error cases.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
+
+<span class="token attribute attr-name">#[should_panic]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">undefined_word</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"newword"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Just throwing a new word should panic. Defining a new word with no body should also panic:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
+
+<span class="token attribute attr-name">#[should_panic]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">new_word_no_body</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">": square ;"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Next I used the zforth example definition as a basic test:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
+
+<span class="token keyword">fn</span> <span class="token function-definition function">new_word</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token comment">// new word</span>
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">": square dup * ;"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token comment">// run program with new word</span>
+
+    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"5 square ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">25</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<h2 class="atx" id="basic-demo">Basic demo</h2>
+
+<p>I added most of the base words and can add new words. I put a quick egui editor, and threw some syntax highlighting on. The project can be found here: <a href="https://github.com/485angelprocess/bbforth">GitHub - 485angelprocess/bbforth: small forth interpreter implemented in rust</a></p>
+
+<p><img alt="forth_editor.png" src="file:///C:/Users/magen/Documents/Blog/Resources/forth_editor.png"></p>
+
+<p>Overall I'm happy with progress, it's really nice thinking about forth works internally, and the decisions that make it simple and flexible to implement from a language perspective. Next I want to finish adding primitives, which will mean doing some memory access and return stack operations. I also want to improve the editor. I might make it more of a terminal prompt, but at least want to make it easy to read and self document well.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

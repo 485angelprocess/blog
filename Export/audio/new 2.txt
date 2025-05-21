@@ -1,0 +1,6 @@
+if self.polarity == Polarity.POS:
+	m.d.comb += self.hsync.eq(hcounter.state == VideoState.SYNC)
+	m.d.comb += self.vsync.eq(vcounter.state == VideoState.SYNC)
+else:
+	m.d.comb += self.hsync.eq(hcounter.state != VideoState.SYNC)
+	m.d.comb += self.vsync.eq(vcounter.state != VideoState.SYNC)
