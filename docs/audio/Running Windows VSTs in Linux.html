@@ -1,0 +1,68 @@
+<html>
+
+   <head>
+
+      <title>Running Windows VSTs in Linux</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: June 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="running-windows-vsts-in-linux">Running Windows VSTs in Linux</h1>
+
+<p>I wanted to write this out, because it took me a little bit to get working. I am running Ubuntu 22.04 and Reaper 7.09. There are some older blogposts about getting windows vsts to run, but there's a lot of notes about specific versions of things. For my setup, there was actually less to do than I found from 2015-2020 notes. </p>
+
+<p>I used <code>yabridge</code> (<a href="https://github.com/robbert-vdh/yabridge">GitHub - robbert-vdh/yabridge: A modern and transparent way to use Windows VST2, VST3 and CLAP plugins on Linux</a>) to wrap windows vsts.</p>
+
+<p>I first installed wine 10.10, and installed yabridge from the provided binaries. I put <code>yabridge</code> into <code>~/.local/share</code> and added to my PATH. Then I created <code>~/.wine/drive_c/Program Files/vst/</code> and added some vsts. </p>
+
+<p>Added the folder:</p>
+
+<pre><code class="fenced-code-block language-bash">$ yabridgectl <span class="token function">add</span> ~/.wine/drive_c/Program Files/vst/</code></pre>
+
+<p>And synced the vsts:</p>
+
+<pre><code class="fenced-code-block language-bash">$ yabridgectl <span class="token function">sync</span></code></pre>
+
+<p>When I scanned/opened Reaper, it read them correctly.  I may run into problems with 32-bit VSTs at some point, but most of them are packaged as 64-bit these days. This guide is short because what made this hard was reading too much information about older wine versions. With those errors, Reaper would just show that the vsts failed to scan (Settings-&gt;VSTs, there is a drop down menu under scan vsts). To check what was going on I ran <code>yabridgehost.exe --version</code>, this booted yabridge through the default wine setup and printed relevant errors to console. At first I had accidentally installed 32-bit wine only, and then I had an outdated version. After removing wine, and reinstalling, I had to remove the vst folder from yabridge, purge the existing plugins and reinstall.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
