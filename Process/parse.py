@@ -95,6 +95,7 @@ class SiteBuilder(object):
         self.entries = list()
     
     def get_info(self, filename):
+        # Get title and and other metadata
         title, article = get_article_body(filename)
         print("Article title {}".format(title))
         parent = os.path.abspath(os.path.join(filename, ".."))
@@ -102,7 +103,7 @@ class SiteBuilder(object):
         subject = os.path.split(parent)[-1]
         fn = os.path.split(filename)[-1]
         
-        modified = os.path.getmtime(filename)
+        modified = os.path.getctime(filename)
         
         self.entries.append(
             ArticleEntry(os.path.join(subject, fn),
