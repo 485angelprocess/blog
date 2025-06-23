@@ -3,7 +3,7 @@ body{
   min-width: 40em;
   max-width: 60em;
   margin:auto;
-  background-color: #FFFFFF;
+  background-color: #000000;
   color: #000c14;
   float: top;
   background-image: url("img/background.jpg");
@@ -20,7 +20,8 @@ pre{
   opacity: 0.95;
   margin-top: 2em;
   margin-bottom: 4em;
-  background-color: #FFFFFF;
+  background-color: #000000;
+  color: #FFFFFF;
 }
 
 .nav{
