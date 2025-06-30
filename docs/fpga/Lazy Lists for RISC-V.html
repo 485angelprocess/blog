@@ -1,0 +1,256 @@
+<html>
+
+   <head>
+
+      <title>Lazy Lists for RISC-V</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: June 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="lazy-lists-for-risc-v">Lazy Lists for RISC-V</h1>
+
+<p>I have been looking into a new audio programming language, <a href="https://github.com/lfnoise/sapf">sapf</a>. One of the interesting components of this language is using lazy lists as a core component. sapf is also a stack based language, similar to forth which I've been interested in. One of the things about Forth is it can be used as a direct way of manipulating a CPU, instead of being a program that runs through an OS. I've been starting to understand what makes Forth and similar languages more applicable to direct manipulation. Towards that end, I wanted to play around a bit with the ideas in sapf, to try to move towards an OSless system. sapf is designed for built-in multithreading, so it'll need some work on the software side to run directly. Because all types are immutable, it greatly lowers the difficulty of multithreading.</p>
+
+<p>However before all that, I needed to improve my RISC-V softcore (which I started in an earlier post). For now, I'm implementing multiplication and improving the assembler.</p>
+
+<h2 class="atx" id="simplest-lazy-lists">Simplest Lazy Lists</h2>
+
+<p>A very basic place to start is with generating natural numbers. These are [0, 1, 2, 3, ...]. One way to write this in assembly is to just add each one. My current setup is that a list writes to some specified address, and then calculates the next value. Later I can program around this so that I jump to the write instruction, run the next and return to my main thread each time I need a new value.</p>
+
+<pre><code class="fenced-code-block language-asm">RESET:
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r0, r0, 0 # Set r0 to 0
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r1, r1, 0 # Set r1 to 0
+
+STORE:
+
+&nbsp;&nbsp;&nbsp;&nbsp;sw r0, %addr(r1)
+
+NEXT:
+
+&nbsp;&nbsp;&nbsp;&nbsp;addi r0, r0, 1 # Add 1</code></pre>
+
+<p>This will work for most cases, there's probably some sign things to check out. What I hope to do is to store generators in way that can quickly be assembled from sapf or similar syntax.</p>
+
+<p>For ordinal numbers, the generator is essentially the same, just adding one line to start at 1.</p>
+
+<pre><code class="fenced-code-block language-asm">RESET:
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r0, r0, 0 # Set r0 to 0
+
+&nbsp;&nbsp;&nbsp;&nbsp;addi r0, r0, 1 # Set r0 to 1
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r1, r1, 0 # Set r1 to 0
+
+STORE:
+
+&nbsp;&nbsp;&nbsp;&nbsp;sw r0, %addr(r1)
+
+NEXT:
+
+&nbsp;&nbsp;&nbsp;&nbsp;addi r0, r0, 1 # Add 1</code></pre>
+
+<h2 class="atx" id="multiplication">Multiplication</h2>
+
+<p>For anything more complicated I need to start implemented more than the most basic integer operations on my softcore. Right now, it seems like I have all the RV32I instructions running ok, so I'll start with some of the RV32M. I'm leaving division off for now, I want to check timing to decide if I'm doing naive division, or a slower division algorithm. For right now, I'm putting multiplication in a separate unit. The unit looks up the correct operation by the function code and then provides the result.</p>
+
+<pre><code class="fenced-code-block language-python"># Multiply
+
+with m.Switch(self.bus.f):
+
+    with m.Case(0b000):
+
+        # Multiply and get lower 32
+
+        m.d.comb += self.bus.result.eq(working[0:32])
+
+        with m.If(self.bus.en):
+
+            m.d.sync += working.eq(self.bus.a * self.bus.b)
+
+            m.d.sync += self.bus.done.eq(1)
+
+    with m.Case(0b001):
+
+        # Multiply and get upper 32
+
+        m.d.comb += self.bus.result.eq(working[32:64])
+
+        with m.If(self.bus.en):
+
+            m.d.sync += working.eq(self.bus.a * self.bus.b)
+
+            m.d.sync += self.bus.done.eq(1)
+
+    with m.Case(0b010):
+
+        # Multiply signed rs1 by unsigned rs2
+
+        m.d.comb += self.bus.result.eq(working[32:])
+
+        with m.If(self.bus.en):
+
+            m.d.sync += working.eq(self.bus.a * self.bus.b.as_unsigned())
+
+            m.d.sync += self.bus.done.eq(1)
+
+    with m.Case(0b010):
+
+        # Multiply unsigned rs1 by unsigned rs2
+
+        m.d.comb += self.bus.result.eq(working[32:])
+
+        with m.If(self.bus.en):
+
+            m.d.sync += working.eq(self.bus.a.as_unsigned() * self.bus.b.as_unsigned())
+
+            m.d.sync += self.bus.done.eq(1)</code></pre>
+
+<p>Whenever the CPU fetches a multiplication operation, it sends the data to the multiplication unit, and awaits the <code>done</code> signal. This is still a naive implementation, so I'll have to see if any issues arise, but if I have to pipeline the operations more it'll be easy to insert steps without having to change the CPU instructions.</p>
+
+<p>For a simple pattern (multiples of 3), I can now successfully run the code:</p>
+
+<pre><code class="fenced-code-block language-asm">RESET:
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r0, r0, 0 # Set r0 to 0
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r2, r2, 0 # Set r2 to 0
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r3, r3, 0 # Set r3 to 0
+
+&nbsp;&nbsp;&nbsp;&nbsp;addi r3, r3, 3 # Set r3 to 3
+
+&nbsp;&nbsp;&nbsp;&nbsp;andi r1, r1, 0 # Set r1 to 0
+
+STORE:
+
+&nbsp;&nbsp;&nbsp;&nbsp;sw r2, %addr(r1)
+
+NEXT:
+
+&nbsp;&nbsp;&nbsp;&nbsp;addi r0, r0, 1 # Add 1 to r0
+
+&nbsp;&nbsp;&nbsp;&nbsp;mul  r2, r0, r3 # Multiply r0 by 3</code></pre>
+
+<h2 class="atx" id="assembler">Assembler</h2>
+
+<p>While doing working on test for these ideas. I improved my basic assembler to make it more straightforward to go from assembly to machine code. I wanted to make it easy to define the different formats of instructions (there's a special word for this which I forgot). So I wrote some classes which allow me to define instructions like this:</p>
+
+<pre><code class="fenced-code-block language-python">DefinitionTable["sw"] = Definition(
+
+    Immediate(arg = 1, start = 5, stop = 11),
+
+    Register(arg = 0),
+
+    Register(arg = 2),
+
+    Constant(0b010, width = 3),
+
+    Immediate(arg = 1, start = 0, stop = 4),
+
+    Constant(0b01000, width = 5),
+
+    Constant(0b11, width = 2)
+
+)</code></pre>
+
+<p>This handles the parsing, placing the bits and otherwise in the right place. Since many operations vary just by the function code I can also create class methods for common formats:</p>
+
+<pre><code class="fenced-code-block language-python">class Definition(object):
+
+    def __init__(self, *args):
+
+        self.args = args
+
+
+
+    @classmethod
+
+    def arith_imm(cls, function):
+
+        return cls(
+
+            Immediate(arg = 2, stop = 11),
+
+            Register(arg = 1),
+
+            Constant(function, 3),
+
+            Register(arg = 0),
+
+            Constant(0b00100, width = 5),
+
+            Constant(0b11, width = 2)
+
+        )
+
+
+
+    @classmethod
+
+    def mul(cls, function):
+
+        return cls(
+
+            Constant(1, 7), # muldiv
+
+            Register(arg = 2), # rs2
+
+            Register(arg = 1), # rs1
+
+            Constant(function, 3), #f
+
+            Register(arg = 0), # rd
+
+            Constant(0b01100, width = 5),
+
+            Constant(0b11, width = 2)
+
+        )</code></pre>
+
+<p>I can now easily parse some assembly code, with simple find and replace for special labels. I also will have an easier time keeping track of labels and otherwise, since my abstractiosn are all in the right place.</p>
+
+<p>Next I am going to implement an FPU and then start running some tests on hardware. I then am going to write a python or rust bridge which translates words into assembly to load into the fpga.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
