@@ -4,7 +4,7 @@ body{
   max-width: 60em;
   margin:auto;
   background-color: #000000;
-  color: #FFFFFF;
+  color: #000c14;
   float: top;
   background-image: url("img/background.jpg");
 }
@@ -12,10 +12,6 @@ body{
 pre{
   color:#000000;  
   background-color: #DDDDDD;
-}
-
-.markdown-body{
-  color: #FFFFFF;
 }
 
 #article{
