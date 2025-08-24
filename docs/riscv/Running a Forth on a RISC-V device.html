@@ -1,0 +1,264 @@
+<html>
+
+   <head>
+
+      <title>Running a Forth on a RISC-V device</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: August 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="running-a-forth-on-a-risc-v-device">Running a Forth on a RISC-V device</h1>
+
+<p>I am putting together some components I have for a vision of forth based modular style video/audio synthesizer. Which is a series of complications. I have a risc-v core written for my FPGA which I just added some more thorough testing to, and greatly reduced the footprint to. And I have a rust based forth interpreter which I can run and define words fairly easily for.</p>
+
+<p>My current concept is to have one core which runs the interpreter and one which runs the synthesizer thread. Potentially I will add more cores if needed. I would like to adopt some of the concepts from transputers to make parallelism run well, but I'm going to start with getting things running, and that means having my interpreter write programs on the RISC-V device.</p>
+
+<p>The goal for this part of ht project is to write something like:</p>
+
+<pre><code class="fenced-code-block">riscv&gt; 5 4 + .</code></pre>
+
+<p>And my risc-v device run it and return the value. I want my interpreter to be running parallel. This solves some problems (not having to bootstrap the entire program, and having essentially no memory constraints), and creates others (defining behavior which is different when its local or remote). I can see how I'm starting to define a minimal Forth-based OS on the RISC-V, which I suppose at some point could replace my current interpreter.</p>
+
+<p>Regardless, I started with writing the program to RISC-V memory. As a basis I have the forth words <code>writeaddr</code> and <code>readaddr</code> which have direct memory access to the FPGA's DDR3 ram. I wanted to be able to push a series of instructions to the stack and then write them all to RAM. To do that I made some list manipulation words:</p>
+
+<ul>
+
+<li><p><code>stack_to_list</code> takes all the values in the stack and makes them one list type</p>
+
+</li>
+
+<li><p><code>collect</code> takes a generator and a length as arguments and pushes a list with the first n values on the stack.</p>
+
+</li>
+
+<li><p><code>repeat</code> repeats the top of the stack n times.</p>
+
+</li>
+
+<li><p><code>list_group</code> takes two lists and combines each each entry, i.e. <code>[A B C] [D E F] list_group -&gt; [[A D] [B E] [C F]]</code></p>
+
+</li>
+
+</ul>
+
+<p>These were easy to write in rust and allowed me to define a new word <code>upload_program</code> which generates a list of write commands to write to the fpga. This is the full word, which has to do some stack manipulation to get everything ordered:</p>
+
+<pre><code class="fenced-code-block language-forth">: program_offset natural 4 * + collect to_int ;
+
+: upload_program 
+
+    stack_to_list dup 0 access \ Retrieve address offset from stack list
+
+    MemoryAddress + \ DDR3 is addressed map above this value
+
+    swap remove_from_list dup len \ Get length of program
+
+    abc_cab abc_cab program_offset \ get addresses
+
+    dup len "W" repeat \ get function for FPGA
+
+    list_group
+
+    list_group
+
+    puts \ write to serial port
+
+    ;</code></pre>
+
+<p>This basically gives a list of instructions for writing to ram. If I end up with longer programs, I can write a function on my FPGA which takes in a stream, or can switch to a different serial bus method.</p>
+
+<p>Now I can define an assembly function:</p>
+
+<pre><code class="fenced-code-block">0 x0 x0 andi_ \ push instruction to clear register 0 onto stack
+
+10 x0 x1 addi_ \ set register 1 to 10
+
+15 \ Offset in memory
+
+upload_program \ writes program to memory</code></pre>
+
+<p>With a function to reset the processor state and to run it, I can quickly run bare-metal code on my RISC device.</p>
+
+<p>I made a very stripped down boilerplate to set a stack pointer and to reserve space in lower memory:</p>
+
+<pre><code class="fenced-code-block">\ PC = 0, jumps to start of main program
+
+: load_startup
+
+    PROGRAM_START 0 1 jalr_ 0 upload_program
+
+;
+
+
+
+\ kernel
+
+: load_base
+
+    load_startup \ load first jump
+
+
+
+&nbsp;&nbsp;&nbsp;&nbsp;\ Main program
+
+    zero clearreg \ clear zero register
+
+    SP_BASE MemoryAddress + zero sp addi_
+
+&nbsp;&nbsp;&nbsp;&nbsp;\ t1 goes to ddr3 address 0
+
+    MEM x0 t1 addi_
+
+&nbsp;&nbsp;&nbsp;&nbsp;\ t1 gets set to a pointer to where we store function pointer
+
+    IMM_START t1 t1 addi_
+
+&nbsp;&nbsp;&nbsp;&nbsp;\ Load the function pointer
+
+    0 t1 t2 lw_
+
+&nbsp;&nbsp;&nbsp;&nbsp;\ jump to function and store return
+
+    x0 t1 ra jalr_ 
+
+    0 \ noop
+
+    PROGRAM_START upload_program
+
+;</code></pre>
+
+<p>I'm going to build this out as I go, but mainly I just need a way to load a function pointer and tell my main program to jump to that.</p>
+
+<p>To load a specific funtion I defined <code>run_program</code>:</p>
+
+<pre><code class="fenced-code-block">: run_program
+
+    0
+
+    512 upload_program
+
+    512 4 IMM_START + writeaddr \ Store number
+
+    d_reset
+
+    d_start
+
+;</code></pre>
+
+<p>512 is an arbitary point in memory where I can put my function pointer. Later I should place it somewhere sensible.</p>
+
+<p>Next I can define some simply words:</p>
+
+<pre><code class="fenced-code-block"># push_
+
+    0 sp t1 sw_
+
+    -4 sp sp addi_
+
+;
+
+
+
+# pop_
+
+    4 sp sp addi_
+
+    0 sp t1 lw_
+
+;</code></pre>
+
+<p>I defined <code>#</code> as defining words in the riscv context, to try to differentiate contexts. Now I can run a program:</p>
+
+<pre><code class="fenced-code-block"># pushint_
+
+   zero t1 addi_
+
+    push_
+
+;
+
+
+
+# ex
+
+    run_program
+
+;</code></pre>
+
+<p><code>&gt; 5 pushint_ ex</code>, creates assembly which sets register <code>t1</code> to 5, saves that value onto the stack. It then writes a the pointer to itself in a known address. Running the program, starts the main program, which loads that pointer and runs the written assembly. A lot of steps, but I'm trying to build out a framework for having a nice Forth OS.</p>
+
+<p>I want to have output back so I can define <code>st</code> (which is essentially <code>.</code> but I made <code>.</code> hardcoded to be a local function, something I will fix later):</p>
+
+<pre><code class="fenced-code-block"># st
+
+    pop_
+
+    0 zero zero addi_ \ no op needed? have to check what's going on here
+
+    10 zero t1 sw_ \ Write to UART register
+
+    run_program
+
+    10 delay \ wait a tiny bit
+
+    gets \ read from serial
+
+    0 access \ get first byte from response
+
+    . \ print to local terminal
+
+;</code></pre>
+
+<p>A problem I ran into is my core has some error which means running the <code>sw</code> instruction in a certain context causes the register to be rewritten before sending.  I couldn't find it in a few tests, so it's some specific cause. Adding an extra instruction fixes t for now.</p>
+
+<p>With that I can run:</p>
+
+<pre><code class="fenced-code-block">&gt; 5 pushint_ st
+
+5</code></pre>
+
+<p>This is getting there. I can do stack manipulation remotely and more or less reliably run code.</p>
+
+<p>Later I want to have the program running on loop or with interrupts to do ongoing synth workers, but still listen for direct commands.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
