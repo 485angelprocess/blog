@@ -1,5 +1,5 @@
 body{
-  background-image: url("img/background.jpg");
+  background: #000000;
   margin:auto;
 }
 
@@ -7,10 +7,23 @@ div{
   margin: auto;
   margin-top: 2em;
   margin-bottom: 2em;
-  background-color: #FFFFFF;
+  background-color: #000000;
+  color: #FFFFFF;
   opacity: 1.0;
   padding: 1em;
   width: 90%;
   max-width: 40em;
-  border: solid; 
+}
+
+div a{
+  color: #e59490;  
+}
+
+div p{
+  padding: 1em;
+}
+
+h3{
+  padding: 2em;
+  background-color: #ce4d46;
 }

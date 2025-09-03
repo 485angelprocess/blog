@@ -1,0 +1,494 @@
+<html>
+
+   <head>
+
+      <title>Transputer Development - Better Instruction Management</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: August 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="transputer-development---better-instruction-management">Transputer Development - Better Instruction Management</h1>
+
+<p>I went back over my transputer emulator with some idea from writing other rust code, especially how to do function pointers/closures/callback and tokenizing code.</p>
+
+<p>I defined the direct instructions as an array of function pointers:</p>
+
+<pre><code class="fenced-code-block language-rust">fn direct() -&gt; [OpFn; 16]{
+
+    [
+
+        // Jump
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v);
+
+            p.pc = p.pc + operand;
+
+            if p.priority() == Priority::Low{
+
+                p.deschedule();
+
+            }
+
+            Ok(OpVal::Null)
+
+        }),
+
+        // LDLP
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v);
+
+            Ok(OpVal::Int(p.workspace + (operand &lt;&lt; 2)))
+
+        }),
+
+        // PFIX
+
+        Rc::new(|p, v|{
+
+            p.operand = (p.operand).wrapping_add(v as RTYPE) &lt;&lt; 4;
+
+            Ok(OpVal::Null)
+
+        }),
+
+        // LDNL
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v) &lt;&lt; 2;
+
+            let a = p.stack.pop();
+
+            Ok(OpVal::Int(p.mem.read(a.wrapping_add(operand))))
+
+        }),
+
+        // LDC
+
+        Rc::new(|p, v|{
+
+           let operand = p.shift_operand(v);
+
+           p.stack.push(operand);
+
+           Ok(OpVal::Null) 
+
+        }),
+
+        // LDNLP
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v) &lt;&lt; 2;
+
+            let a= p.stack.pop();
+
+            Ok(OpVal::Int(a.wrapping_add(operand)))
+
+        }),
+
+        // NFIX
+
+        Rc::new(|p, v|{
+
+             p.operand = (!(p.operand).wrapping_add(v as RTYPE)) &lt;&lt; 4;
+
+             Ok(OpVal::Null)
+
+        }),
+
+        // LDL
+
+        Rc::new(|p, v|{
+
+           let address = p.workspace.wrapping_add(p.shift_operand(v) &lt;&lt; 2);
+
+           Ok(OpVal::Int(p.mem.read(address)))
+
+        }),
+
+        // ADC
+
+        Rc::new(|p, v|{
+
+            let a = p.stack.pop();
+
+            let operand = p.shift_operand(v);
+
+            Ok(OpVal::Int(a.wrapping_add(operand)))
+
+        }),
+
+        // CALL
+
+        Rc::new(|p, v|{
+
+            // Store register stack
+
+            let a = p.stack.pop();
+
+            let b = p.stack.pop();
+
+            let c = p.stack.pop();
+
+            p.mem.write(p.workspace - 4, a);
+
+            p.mem.write(p.workspace - 8, b);
+
+            p.mem.write(p.workspace - 12, c);
+
+            p.mem.write(p.workspace - 16, p.pc);
+
+            p.workspace -= 16;
+
+            p.pc += p.shift_operand(v) - 4;
+
+            Ok(OpVal::Null)
+
+        }),
+
+        // CJ
+
+        Rc::new(|p, v|{
+
+           let a = p.stack.pop();
+
+           if a == 0{
+
+               p.pc = p.pc.wrapping_add(p.shift_operand(v));
+
+           }
+
+           Ok(OpVal::Null)
+
+        }),
+
+        // AJW
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v) &lt;&lt; 2;
+
+            p.update_wdesc((p.workspace + operand) | (p.descriptor &amp; 0b1));
+
+
+
+            Ok(OpVal::Null)
+
+        }),
+
+        // EQC
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v);
+
+            let a = p.stack.pop();
+
+            if a == operand{
+
+                Ok(OpVal::Int(1))
+
+            }
+
+            else{
+
+                Ok(OpVal::Int(0))
+
+            }
+
+        }),
+
+        // STL
+
+        Rc::new(|p, v|{
+
+            let offset = p.shift_operand(v) &lt;&lt; 2;
+
+            let a = p.stack.pop();
+
+            p.mem.write(p.workspace + offset, a);
+
+            Ok(OpVal::Null)
+
+        }),
+
+        // STNL
+
+        Rc::new(|p, v|{
+
+            let b = p.stack.b();
+
+            let a = p.stack.pop();
+
+
+
+            let offset = p.shift_operand(v) &lt;&lt; 2;
+
+            p.mem.write(a+offset, b);
+
+            Ok(OpVal::Int(a+offset))
+
+        }),
+
+        // OPR
+
+        Rc::new(|p, v|{
+
+            let operand = p.shift_operand(v) as usize;
+
+            let name = p.library.get_indirect_name(operand);
+
+            p.library.get_indirect(operand).clone()(p)
+
+        })
+
+    ]
+
+}</code></pre>
+
+<p>I also looked through Oscar Toledo's javascript based emulator: <a href="https://github.com/nanochess/transputer">GitHub - nanochess/transputer: Transputer T805 emulator, assembler, Pascal compiler, operating system, and K&amp;R C compiler.</a>. </p>
+
+<p>For indirect functions, I defined them using a method for a library which I can also use to get all my function names. For example I can define <code>rev</code>:</p>
+
+<pre><code class="fenced-code-block language-rust">pl.define_indirect("rev",0x0, |p|{
+
+        let a = p.stack.pop();
+
+        let b = p.stack.pop();
+
+        p.stack.push(a);
+
+        p.stack.push(b);
+
+        Ok(OpVal::Null)
+
+    });</code></pre>
+
+<p><code>rev</code> uses no prefix so it is run with the op code <code>0xF0</code>.</p>
+
+<p><code>seterr</code> uses a prefix:</p>
+
+<pre><code class="fenced-code-block language-rust">// Set error
+
+    pl.define_indirect("seterr", 0x10, |p|{
+
+        p.error = 1;
+
+        Ok(OpVal::Null)
+
+    });</code></pre>
+
+<p>This requires <code>0x21</code> <code>0xF0</code> as a sequence.</p>
+
+<p>I wrote a base level assembler which can at least read op words and convert them to machine code. Largely this consists of reading the code, and then expanding the instruction to include <code>pfix</code> and <code>nfix</code> instructions. This recursive function does much of the work:</p>
+
+<pre><code class="fenced-code-block language-rust">fn prefix_constant(op: u8, v: i32) -&gt; Vec&lt;u8&gt;{
+
+    if v &lt; 16 &amp;&amp; v &gt;= 0{
+
+        return vec![(op &lt;&lt; 4) + (v as u8)];
+
+    }
+
+    else if v &gt;= 16{
+
+        let mut p = Vec::new();
+
+        for fix in prefix_constant(0x2, v &gt;&gt; 4){
+
+            p.push(fix);
+
+        }
+
+        p.push((op &lt;&lt; 4) + ((v &amp; 0xF) as u8));
+
+        return p
+
+    }
+
+    else{
+
+        let mut p = Vec::new();
+
+        for fix in prefix_constant(0x6, (!v) &gt;&gt; 4){
+
+            p.push(fix);
+
+        }
+
+        p.push((op &lt;&lt; 4) + ((v &amp; 0xF) as u8));
+
+        return p
+
+    }
+
+}</code></pre>
+
+<p>This gives me the prefix instructions.</p>
+
+<p>As a base level I can write a hello world assembly program:</p>
+
+<pre><code class="fenced-code-block language-asm">; Hello world
+
+ldc 72 ; H
+
+ldc 65536 ; TERMINAL OUTPUT REGISTER
+
+stnl 0
+
+ldc 69 ; E
+
+rev
+
+stnl 0
+
+ldc 76 ; L
+
+rev
+
+stnl 0
+
+stnl 0
+
+ldc 79 ; O
+
+rev
+
+stnl 0
+
+ldc 10 ; \n
+
+rev
+
+stnl 0</code></pre>
+
+<p>Next I have to add label parsing at least, and then experimenting with multiprogramming. It would be great if I can use Occam or C with my emulator. I mostly am interested in understanding how multiprogramming works, and how to write stack based assembly, especially with a limited stack. Seeing how simple the process switching is cool, it gets a little clunky managing different priorities. For instance, calling a <code>runp</code> spawns a new process. There are 4 cases (low-&gt;low, low-&gt;high, high-&gt;low, high-&gt; high) so I need a matrix of actions:</p>
+
+<pre><code class="fenced-code-block language-rust">pub fn run_process(&amp;mut self, wdesc: RTYPE){
+
+        let wpri = wdesc &amp; 0b1;
+
+        let waddress = wdesc &amp; !0b11;
+
+
+
+        match self.priority(){
+
+            Priority::High =&gt; {
+
+                if wpri &gt; 0{
+
+                    // Add low priority to queue
+
+                    if self.get_front_pointer(Priority::Low) == NOT_PROCESS_P{
+
+                        self.set_front_pointer(Priority::Low, waddress);
+
+                    }
+
+                    else{
+
+                        let bp = self.get_back_pointer(Priority::Low);
+
+                        self.mem.write(bp - 8, waddress);
+
+                    }
+
+                    self.set_back_pointer(Priority::Low, waddress);
+
+                }
+
+                else{
+
+                    // Adding high priority to queue
+
+                    if self.get_front_pointer(Priority::High) == NOT_PROCESS_P{
+
+                        self.set_front_pointer(Priority::High, waddress);
+
+                    }
+
+                    else{
+
+                        let bp = self.get_back_pointer(Priority::High);
+
+                        self.mem.write(bp - 8, waddress);
+
+                    }
+
+                    self.set_back_pointer(Priority::High, waddress);
+
+                }
+
+            },
+
+            Priority::Low =&gt; {
+
+                if wpri == 0{
+
+                    // Switch immediately to new high priority process
+
+                    self.save_registers();
+
+                    self.update_wdesc(wdesc);
+
+                    self.status = self.status &amp; (ERROR_FLAG | HALT_ON_ERROR_BIT);
+
+                    self.activate_process();
+
+                }
+
+            }
+
+        }
+
+    }</code></pre>
+
+<p>With each of these, I have to set the front and back pointer of process list, for either the low or high priority list. If the current process is low, I have to save and then go to the high priority process</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

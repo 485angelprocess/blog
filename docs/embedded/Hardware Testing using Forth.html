@@ -1,0 +1,156 @@
+<html>
+
+   <head>
+
+      <title>Hardware Testing using Forth</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: August 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="hardware-testing-using-forth">Hardware Testing using Forth</h1>
+
+<p>I am working on a forth system which involves a client application interacting with an FPGA softcore. I am interested in validating behavior on real hardware, as well as building up abstractions for quickly developing applications. I wanted to focus on the requirements for hardware testing.</p>
+
+<h2 class="atx" id="communication">Communication</h2>
+
+<p>The easiest method for communication for me is a UART port via USB. For other applications, it may become PCIe or ethernet. I want to quickly abstract away from </p>
+
+<p>the physical layer. I start with defining <code>puts</code> and <code>gets</code>. <code>puts</code> writes the top of the stack to the serial device, and <code>gets</code> grabs the bytes from the serial buffer. I used the <code>serialport</code> crate to implement these, as well as a command for connecting to a serial port. My current approach requires drivers to be defined on the rust side, for a more comprehensive OS or closer to an OS type Forth, access to internal drivers should be generic, i.e. register mapped. For my case I know I only am interested in a few peripherals, so it's not a huge problem to write them explicitly.</p>
+
+<p>Using the <code>puts</code> and <code>gets</code> function, I can abstract away from the UART layer and connect to the UART bridge I have on FPGA. My bridge takes in a few functions of variable width, with a character indicating the type of function. For instance <code>x</code> does a soft reset, <code>I</code> always replys with "ID" for sanity checking, and <code>W</code> takes a 32-bit address and 32-bit data word and writes via wishbone. Addresses are mapped with ranges. The current configuration uses the lowest 256 addresses for the debugger, and everything above for RAM accesss. This value is subject to change, but I can plan my script to be easily changeable to match changes to hardware. At some point it could be nice to integrate these changes, but address maps are going to change much slower than any other component.</p>
+
+<pre><code class="fenced-code-block language-forth">\ Serial setup
+
+: resets "x" puts ;
+
+: rws puts 200 delay gets ;
+
+: displays dup list_to_char . . ;
+
+
+
+\ Address mapping
+
+256 const MemoryAddress
+
+\ Short delay for buffer to fill
+
+: read_delay 100 delay gets ;
+
+: memaddr MemoryAddress + ;
+
+: ids "I" puts read_delay displays ;
+
+: writes "W" puts puts puts read_delay ;
+
+: reads "R" puts puts read_delay ;
+
+
+
+: writeaddr memaddr writes ;
+
+: readaddr memaddr reads ;</code></pre>
+
+<p>I can quickly compile a series a function to communicate with my board. I added one utility function <code>list_to_char</code> which pushes a list as chars to the stack to make reading  replies easier. There's some internal inefficiencies in this which are not visible such as byte replies are stored in 32-bit words. I have also not done deep planning on the speed of nested forth calls, but since my serial connection is much slower than CPU, it's not a priority. Nicely, these are mosltly abstractions which the forth code can be completely ignorant of.</p>
+
+<h2 class="atx" id="unit-testing">Unit Testing</h2>
+
+<p>I want to have some minimal way to check that basic test cases are working. I start with two basic functions <code>==</code> and <code>assert</code> as words. <code>==</code> pops two values from the stack and pushes a 1 if they are equal and a 0 if they are not. <code>assert</code> takes two arguments, the first is a message, the second is a logical value (probably 1 or 0), if the value is 0, <code>assert</code> throws an error, otherwise it does nothing.</p>
+
+<p>Using those two, I can define an assert equals function:</p>
+
+<pre><code class="fenced-code-block">: assert_equal (nnS --&gt; None if n==n, throws error otherwise)
+
+&nbsp;&nbsp;&nbsp;&nbsp;abc_cab == swap assert ;</code></pre>
+
+<p>I do some argument juggling, so that from the outside I can write these in the way I want/feels more forth-like:</p>
+
+<pre><code class="fenced-code-block language-forth">\ Does nothing
+
+&gt; 1 1 "Expect numbers to be equal" assert_equal
+
+\ Throws error with message
+
+&gt; 1 2 "Expect numbers to be equal" assert_equal</code></pre>
+
+<p>There's some details that would be nice to check, and I'm sure I'll reach an issue where it'll be necessary to implement at some point.</p>
+
+<h2 class="atx" id="putting-it-together">Putting it together</h2>
+
+<p>Now I can write some test cases to check my hardware can take inputs and give the expected outputs. All I've ever wanted in life. The most basic I need is to be able to write and read from memory. Within the firmware this goes through a variety of bus switches, but I want to be also to directly address memory from the client perspective. My check can simply be:</p>
+
+<pre><code class="fenced-code-block">write(addr, data); assert_eq!(data == read(addr));</code></pre>
+
+<p>I do need some abstractions to make this statement easier, since I get a series of bytes back which are of the form [W A[0] A[1] A[2] A[3] D[0] D[1] D[2] D[3]], I want to parse the data which is at the end ofr stream. To that end I made some ugly looking forth functions. Seeing these makes me want to add some utilities to make them easier, but on the other hand I only have to write them once.</p>
+
+<pre><code class="fenced-code-block">\ Math for getting response
+
+: slicedata dup 8 access swap dup 7 access swap dup 6 access swap 5 access ;
+
+: 8to32 24 lshift swap 16 lshift + swap 8 lshift + + ;
+
+: getdata slicedata 8to32 ;
+
+
+
+\ Get data
+
+: writedata writeaddr getdata ;
+
+: readdata readaddr getdata ;</code></pre>
+
+<p><code>slicedata</code> in particular could probably be done with some form of iteration or similar, especially to make it more generic.</p>
+
+<p>Now I can write a simple test case which will throw an error if my write fails.</p>
+
+<pre><code class="fenced-code-block">\ Check memory read write
+
+\ Should be able to read and write to memory
+
+: test_direct_rw 11 0 writedata 0 readdata 11 "Memory read write" assert_equal ;</code></pre>
+
+<p>In the course of making this, I have a few abstractions which will be make it easier to build my system to read/load data and run code. I am triyng to avoid adding features which could come up, instead focusing on getting things off the ground. While doing that I am trying to logically line up modules that can change internally but external behavior can remain the same.</p>
+
+<p>Next I'll be doing some type of RISC-V assembly using my forth setup, pushing it to memory and letting my FPGA softcore run it. Having a baseline of tests will give me a baseline for debugging, making it easier to focus on the problems at hand.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>

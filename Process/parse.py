@@ -5,7 +5,12 @@ import shutil
 import time
 import datetime
 
+import json
+
 class ArticleBounds(object):
+    """
+    Defines the start and stop points of some tag
+    """
     def __init__(self):
         self.start = None
         self.end = None
@@ -16,6 +21,9 @@ class ArticleBounds(object):
 bounds = ArticleBounds()
 
 class Parser(HTMLParser):
+    """
+    Parse html files which were outputted by marktext
+    """
     def start(self):
         self.bounds = dict()
         self.bounds["article"] = ArticleBounds()
@@ -40,6 +48,9 @@ class Parser(HTMLParser):
         #print("Data is {}".format(data))
 
 def get_article_body(filename):
+    """
+    Get the title and contents of an article as html
+    """
     f = open(filename)
     lines = f.readlines()
     
@@ -66,8 +77,16 @@ class ArticleEntry(object):
     def fix_img_source(self):
         self.body.replace('file')
         
+    def get_datetime(self):
+        return datetime.datetime.fromtimestamp(self.modified)
+        
     def date_display(self, format = "%B %Y"):
-        return datetime.datetime.fromtimestamp(self.modified).strftime(format)
+        return self.get_datetime().strftime(format)
+        
+    def least_recent(self, cached_time):
+        cdt = datetime.datetime.strptime(cached_time, "%B %Y")
+        if cdt < self.get_datetime():
+            self.modifed = cdt.timestamp()
         
     def write_to(self, dest_folder, template):
         dest = os.path.abspath(os.path.join(dest_folder, self.location))
@@ -94,34 +113,60 @@ class SiteBuilder(object):
         self.root = root
         self.processed = processed
         
+        self.date_table = self.load_date_table()
+        
         self.entries = list()
+        
+    def load_date_table(self, filename = "date.json"):
+        """
+        Load json table of saved creation dates
+        """
+        try:
+            with open(filename, 'r') as f:
+                contents = f.read()
+                print("Contents of json file {}".format(contents))
+                return json.loads(contents)
+        except FileNotFoundError as e:
+            print("No existing date file")
+            return dict()
+            
+    def save_date_table(self, filename = "date.json"):
+        with open(filename, 'w') as f:
+            f.write(json.dumps(self.date_table))
     
     def get_info(self, filename):
         # Get title and and other metadata
         title, article = get_article_body(filename)
-        print("Article title {}".format(title))
+        #print("Article title {}".format(title))
         parent = os.path.abspath(os.path.join(filename, ".."))
-        print("Parent {}".format(os.path.split(parent)[-1]))
+        #print("Parent {}".format(os.path.split(parent)[-1]))
         subject = os.path.split(parent)[-1]
         fn = os.path.split(filename)[-1]
         
         modified = os.path.getctime(filename)
         
-        self.entries.append(
-            ArticleEntry(os.path.join(subject, fn),
+        entry = ArticleEntry(os.path.join(subject, fn),
                         title,
                         article,
                         subject,
                         modified)
+        
+        if title in self.date_table:
+            entry.least_recent(self.date_table[title])
+            
+        self.entries.append(
+            entry
         )
+        
+        self.date_table[title] = entry.date_display()
     
     def _get_articles(self):
         for path, subdirs, files in os.walk(self.root):
             for name in files:
-                print(os.path.join(path, name))
+                #print(os.path.join(path, name))
                 
                 if name.endswith(".html"):
-                    print("Loading ")
+                    #print("Loading ")
                     yield os.path.join(path, name)
                     
     def load_articles(self):
@@ -168,7 +213,7 @@ class SiteBuilder(object):
         
         template = "\n".join(open("base_article.html").readlines())
         
-        print(template)
+        #print(template)
         
         for e in self.entries:
             e.write_to(out, template)
@@ -187,3 +232,10 @@ if __name__ == "__main__":
     
     sb.load_articles()
     sb.gen_site()
+    
+    print(sb.date_table)
+    
+    # Cache dates
+    # This is so file management/moving between computers doesn't trash
+    # the dates when posts were made
+    sb.save_date_table()

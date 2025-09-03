@@ -1248,157 +1248,319 @@ pre[class*="language-"] {
   <style>.markdown-body{}pre.front-matter{display:none!important;}</style>
 </head>
 <body>
-  <article class="markdown-body"><h1 class="atx" id="minimal-forth-implementation-in-rust">Minimal Forth implementation in Rust</h1>
-<p>I have been looking at forth a bit and wanted to start putting together some implementations of it. The language is structured so that a minimal implementation is very quick to do. My overall goal is to make a non-portable RISC-V implementation, with a built-in editor, but for now I am doing a portable version with no editor. I used <a href="https://github.com/zevv/zForth">zforth</a> as a main reference, also looking at gforth and colorForth as references.</p>
-<p>A core to forth is an extensible dictionary of words, so I want to start setting up a rust struct to handle the state of the program, with the ability to run primitives, and do stack operations. To get things up and running I wanted to try to keep things as simple as possible. The data stack is a <code>Vec</code>. I map the dictionary words using a HashMap, this is close to the zforth implementation, but I'm trying to use some more idiomatic rust as well. The first pass at the core struct is:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">type</span>  <span class="token type-definition class-name">BaseType</span> <span class="token operator">=</span> <span class="token keyword">i32</span><span class="token punctuation">;</span>
+  <article class="markdown-body"><h1 class="atx" id="i2c-driver-in-amaranth-hdl">I2C Driver in Amaranth HDL</h1>
+<p>I needed to write a I2C driver to control an audio chip. I tried to make a somewhat simple driver, by breaking it down into three components. Still a bit frustrated because I feel like it can be simplified more, but it's at least functioning.</p>
+<h2 class="atx" id="i2c-overview">I2C Overview</h2>
+<p>I2C is inter-intergtated circuit, it's a serial protocol for interfacing different ICs. It uses a clock line and a bidirectional data line. In most cases data is shifted on the falling edge, and read on the rising edge. There are a stop and start condition.</p>
+<ul>
+<li><p>The start condition is done by shifting the data from high to low while keeping the clock constant.</p>
+</li>
+<li><p>The stop condition is done by shifting the data from low to high while keeping the clock constant.</p>
+</li>
+</ul>
+<p>After sending the start, one byte of data is written or read at a time, after each byte, the slave device should send a ACK if it's a valid address. </p>
+<h2 class="atx">Implementation</h2>
+<p>To start, I decided the controller should be interfaced with a Wishbone-style bus, using a few registers. I used Xilinx's UART IP as a framework for interfacing with a serial bus. I started with defining the necessary registers:</p>
+<table>
+<thead>
+<tr>
+<th>Register</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>ENABLE</td>
+<td>Writing 1 will enable transactions to start. Data should be buffered prior to enabling, unless there is some guarantee that the data bus is faster than the serial bus.</td>
+</tr>
+<tr>
+<td>WRITE_DATA</td>
+<td>Write one word to data buffer. If we are just reading this just needs be some value. (Write-only)</td>
+</tr>
+<tr>
+<td>WRITE_START</td>
+<td>Volatile flag, indicates that the data is the start of frame. I guess I could make this implicit, but leaving it explicit gives me some flexbility for future designs.</td>
+</tr>
+<tr>
+<td>DATA_EN</td>
+<td>Set to 1 if the next byte of data is written to the slave, set to 0 if the driver should read instead.</td>
+</tr>
+<tr>
+<td>WRITE_LEN</td>
+<td>Number of bytes in the write buffer (Read-only)</td>
+</tr>
+<tr>
+<td>READ_DATA</td>
+<td>Response buffer. If the data was written, this will have a copy of the write data, otherwise this is the response from the slave. Read from this will pop from the response data. (Read-only)</td>
+</tr>
+<tr>
+<td>READ_LEN</td>
+<td>Number of bytes in the response buffer (Read-only)</td>
+</tr>
+<tr>
+<td>READ_ACK</td>
+<td>Gives the ACK bit from the top of the response buffer. If ACK is 0, the slave responded. (Read-only)</td>
+</tr>
+<tr>
+<td>PERIOD</td>
+<td>Set the period of the driver.</td>
+</tr>
+</tbody></table>
+<p>Essentially there are two buffers, one for sending data and then one for getting the response. Each byte of the transaction is marked as read or write by the top-level device. I had some frustrations with Vivado's IP, but it was the over-flexibility of the IP which made it difficult to use and setup. Hopefully I won't suffer the same scope creep.</p>
+<p>Next I defined the output. SDA needs to be bidirectional, so needs three signals (ok, actually it could use two since SDA only needs to be pulled low, but it made it a little harder to debug). <code>sda_out</code>, <code>sda_en</code>, and <code>sda_in</code>  are used for data and <code>scl</code> is just an output clock.</p>
+<p>With the input and outputs, I can write a test to design off of.</p>
+<pre><code class="fenced-code-block language-python">def test_write(self):
+    dut = I2CTop()
 
-<span class="token keyword">pub</span> <span class="token keyword">struct</span> <span class="token type-definition class-name">Context</span><span class="token punctuation">{</span>
-    data_stack<span class="token punctuation">:</span> <span class="token class-name">Vec</span><span class="token operator">&lt;</span><span class="token class-name">BaseType</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
-    dict<span class="token punctuation">:</span> <span class="token class-name">HashMap</span><span class="token operator">&lt;</span><span class="token class-name">String</span><span class="token punctuation">,</span> <span class="token keyword">usize</span><span class="token operator">&gt;</span><span class="token punctuation">,</span>
-    prim<span class="token punctuation">:</span> <span class="token class-name">HashMap</span><span class="token operator">&lt;</span><span class="token keyword">usize</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token operator">&gt;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>Pop and push operate on the stack:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">pop</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token class-name">BaseType</span><span class="token punctuation">{</span>
-    <span class="token keyword">self</span><span class="token punctuation">.</span>data_stack<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span>
-<span class="token punctuation">}</span>
+    response = I2CResponse(
+        I2CWord(10),
+        I2CWord(11),
+        I2CWord(12),
+        I2CWord(13)
+    )
 
-<span class="token keyword">fn</span> <span class="token function-definition function">push</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> v<span class="token punctuation">:</span> <span class="token class-name">BaseType</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">self</span><span class="token punctuation">.</span>data_stack<span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>For now I'm populating the primitive dictionary at runtime. Literals and syscalls have specific rules for parsing, so I'm treating somewhat separately. This sets up a map from  an op number/address to a enum for the primitives. Later, I will add functionality for op numbers above the primitives for custom words. For now I just want to see a basic program running, so I'm only doing a few words:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">setup</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">self</span><span class="token punctuation">.</span>lit <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_implicit</span><span class="token punctuation">(</span><span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">LIT</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token keyword">self</span><span class="token punctuation">.</span>sys <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_implicit</span><span class="token punctuation">(</span><span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">SYS</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    async def bus_process(ctx):
+        await Bus.sim_write(ctx, dut.bus, 8, 10) # Period
+        await Bus.sim_write(ctx, dut.bus, 3, 1) # Write
+        await Bus.sim_write(ctx, dut.bus, 2, 1) # Start flag
+        await Bus.sim_write(ctx, dut.bus, 1, 10) # Write data
+        await Bus.sim_write(ctx, dut.bus, 1, 11)
+        await Bus.sim_write(ctx, dut.bus, 1, 12)
+        await Bus.sim_write(ctx, dut.bus, 1, 13)
+        assert await Bus.sim_read(ctx, dut.bus, 4) == 4
+        await Bus.sim_write(ctx, dut.bus, 0, 1) # Enable
 
-    <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_prim</span><span class="token punctuation">(</span><span class="token string">"dup"</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">DUP</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">add_prim</span><span class="token punctuation">(</span><span class="token string">"*"</span><span class="token punctuation">,</span> <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">MUL</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>My parser is starting as this. I am going to tidy this up later, but it gets the op number and an optional argument. I see reasons to treat the argument as an <code>Option</code> or a mutable reference, which I'll decide on later.</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">get_op</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> msg<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token class-name">String</span><span class="token punctuation">)</span> <span class="token punctuation">-&gt;</span> <span class="token punctuation">(</span><span class="token keyword">usize</span><span class="token punctuation">,</span> <span class="token keyword">i32</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+        # Wait for buffer to fill
+        while await Bus.sim_read(ctx, dut.bus, 6) &lt; 4:
+            await ctx.tick()
+        await Bus.sim_write(ctx, dut.bus, 0, 0) #Disable
 
-    <span class="token keyword">if</span> msg<span class="token punctuation">.</span><span class="token function">starts_with</span><span class="token punctuation">(</span><span class="token string">"."</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-        <span class="token comment">// System call/special functions</span>
-        <span class="token keyword">if</span> <span class="token keyword">let</span> <span class="token class-name">Some</span><span class="token punctuation">(</span>result<span class="token punctuation">)</span> <span class="token operator">=</span> msg<span class="token punctuation">.</span><span class="token function">bytes</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">nth</span><span class="token punctuation">(</span><span class="token number">1</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-            <span class="token comment">// system call with specifier</span>
-            <span class="token comment">// These aren't implemented yet,</span>
-            <span class="token comment">// But ." is literal string</span>
-            <span class="token comment">// and .s displays the entire stack as examples</span>
-            <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>sys<span class="token punctuation">,</span> result<span class="token punctuation">.</span><span class="token function">try_into</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-        <span class="token punctuation">}</span>
-        <span class="token keyword">else</span><span class="token punctuation">{</span>
-            <span class="token comment">// system call no argument</span>
-            <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>sys<span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-        <span class="token punctuation">}</span>
-    <span class="token punctuation">}</span>
-    <span class="token keyword">if</span> <span class="token keyword">self</span><span class="token punctuation">.</span>dict<span class="token punctuation">.</span><span class="token function">contains_key</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">{</span>
-        <span class="token comment">// in dictionary of words</span>
-        <span class="token keyword">return</span> <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>dict<span class="token punctuation">[</span>msg<span class="token punctuation">]</span><span class="token punctuation">,</span> <span class="token number">0</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token punctuation">}</span>
-    <span class="token comment">// assume it is literal</span>
-    <span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>lit<span class="token punctuation">,</span> msg<span class="token punctuation">.</span><span class="token function">parse</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span>
-<span class="token punctuation">}</span></code></pre>
-<p>With the op number I can direct my interpreter to run a primitive or a custom word.</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">parse</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> msg<span class="token punctuation">:</span> <span class="token operator">&amp;</span><span class="token class-name">String</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+        # Received 4 responses
+        assert await Bus.sim_read(ctx, dut.bus, 7) == 0 # ACK
+        assert await Bus.sim_read(ctx, dut.bus, 5) == 10
+        assert await Bus.sim_read(ctx, dut.bus, 7) == 0 # ACK
+        assert await Bus.sim_read(ctx, dut.bus, 5) == 11
+        assert await Bus.sim_read(ctx, dut.bus, 7) == 0 # ACK
+        assert await Bus.sim_read(ctx, dut.bus, 5) == 12
+        assert await Bus.sim_read(ctx, dut.bus, 7) == 0 # ACK
+        assert await Bus.sim_read(ctx, dut.bus, 5) == 13
 
-    <span class="token comment">// get address of word with argument</span>
-    <span class="token keyword">let</span> <span class="token punctuation">(</span>op<span class="token punctuation">,</span> v<span class="token punctuation">)</span> <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">get_op</span><span class="token punctuation">(</span>msg<span class="token punctuation">)</span><span class="token punctuation">;</span>
+    async def i2c_process(ctx):
+        while not response.last():
+            sda = ctx.get(dut.sda)
+            scl = ctx.get(dut.scl)
+            sda_en = ctx.get(dut.sda_en)
+            response.get(ctx, sda, sda_en, scl, dut.sda_in)
+            await ctx.tick()
 
-    <span class="token keyword">if</span> <span class="token keyword">self</span><span class="token punctuation">.</span>prim<span class="token punctuation">.</span><span class="token function">contains_key</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>op<span class="token punctuation">)</span><span class="token punctuation">{</span>
-        <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">do_prim</span><span class="token punctuation">(</span><span class="token keyword">self</span><span class="token punctuation">.</span>prim<span class="token punctuation">[</span><span class="token operator">&amp;</span>op<span class="token punctuation">]</span><span class="token punctuation">,</span> v<span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token punctuation">}</span>
-    <span class="token keyword">else</span><span class="token punctuation">{</span>
-        <span class="token macro property">todo!</span><span class="token punctuation">(</span><span class="token string">"Custom words not implemented yet."</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token punctuation">}</span>
-<span class="token punctuation">}</span></code></pre>
-<p>Primitives are treated as a switch. Each primitive is intended to be very simple to implement.</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">pub</span> <span class="token keyword">fn</span> <span class="token function-definition function">do_prim</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> <span class="token keyword">self</span><span class="token punctuation">,</span> p<span class="token punctuation">:</span> <span class="token constant">PRIM</span><span class="token punctuation">,</span> v<span class="token punctuation">:</span> <span class="token class-name">BaseType</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">match</span> p<span class="token punctuation">{</span>
-        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">LIT</span> <span class="token operator">=&gt;</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">,</span>
-        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">SYS</span> <span class="token operator">=&gt;</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">sys_call</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">,</span>
-        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">DUP</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
-            <span class="token comment">// Duplicate the top of the stack</span>
-            <span class="token keyword">let</span> v <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">;</span>
-            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>v<span class="token punctuation">)</span><span class="token punctuation">;</span>
-        <span class="token punctuation">}</span><span class="token punctuation">,</span>
-        <span class="token constant">PRIM</span><span class="token punctuation">::</span><span class="token constant">MUL</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
-            <span class="token comment">// Multiply the top 2 numbers on the stack</span>
-            <span class="token keyword">let</span> a <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-            <span class="token keyword">let</span> b <span class="token operator">=</span> <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-            <span class="token keyword">self</span><span class="token punctuation">.</span><span class="token function">push</span><span class="token punctuation">(</span>a <span class="token operator">*</span> b<span class="token punctuation">)</span><span class="token punctuation">;</span>
-        <span class="token punctuation">}</span><span class="token punctuation">,</span>
-        _ <span class="token operator">=&gt;</span> <span class="token macro property">todo!</span><span class="token punctuation">(</span><span class="token string">"Not implemented {:?}"</span><span class="token punctuation">,</span> p<span class="token punctuation">)</span>
-    <span class="token punctuation">}</span>
-<span class="token punctuation">}</span></code></pre>
-<p>With this setup, I can get my first extremely scoped program up. The program is:</p>
-<pre><code class="fenced-code-block language-forth">5 dup * .</code></pre>
-<p>This puts 5 on the stack, duplicates it, and the multiples, giving the square of 5. The <code>.</code> word pops the stack and prints the top value.</p>
-<p>The main function for my demo looks like:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    sim = Simulator(dut)
+    sim.add_clock(1e-8)
+    sim.add_testbench(bus_process)
+    sim.add_testbench(i2c_process)
 
-    ctx<span class="token punctuation">.</span><span class="token function">setup</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+    with sim.write_vcd("bench/serial_test.vcd"):
+        sim.run_until(1000 * 1e-8)</code></pre>
+<p>This sets up the driver and then writes 4 bytes out. The device should give me the same bytes back out, with an <code>ACK</code> flag on each byte. I may add further tests later if I run into problems, but this is a good start.</p>
+<p>For the inner implementation, I split the functions into three parts. The output section works on a bit level, sending out/in each bit. There's a few cases the output section handles:</p>
+<table>
+<thead>
+<tr>
+<th>Clock En</th>
+<th>Data En</th>
+<th>Function</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>1</td>
+<td>Use for sending start/stop conditions.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>Write bits out to I2C device</td>
+</tr>
+<tr>
+<td>1</td>
+<td>0</td>
+<td>Read bits from I2C device</td>
+</tr>
+</tbody></table>
+<p>Data is written as a stream, which shifts in new data/parameters with clock timing. Data is read from this module with a single clock pulse, since there's no way to apply backpressure on the I2C bus (except for on a logical level). </p>
+<p>The actual model is mostly a counter which sends data based on the period, with some extra logic for these different cases:</p>
+<pre><code class="fenced-code-block language-python">class I2COut(wiring.Component):
+    """
+    Drive serial lines
+    """
+    def __init__(self, max_period = 1024):
+        self.max_period = max_period
 
-    <span class="token keyword">let</span> program <span class="token operator">=</span> <span class="token string">"5 dup * ."</span><span class="token punctuation">;</span>
+        super().__init__({
+            # Input
+            "clk_en": In(1),
+            "dat_en": In(1),
+            "data": In(1),
+            "ready": Out(1),
+            "valid": In(1),
+            "period": In(range(max_period)),
+            # Data
+            "read_data": Out(1),
+            "read_valid": Out(1),
+            #I2C interface
+            "sda": Out(1),
+            "sda_en": Out(1),
+            "sda_in": In(1),
+            "scl": Out(1)
+        })
 
-    <span class="token comment">// go through program</span>
-    <span class="token keyword">for</span> p <span class="token keyword">in</span> program<span class="token punctuation">.</span><span class="token function">split</span><span class="token punctuation">(</span><span class="token string">" "</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+    def elaborate(self, platform):
+        m = Module()
 
-        <span class="token comment">//println!("{}, {}", p.to_string(), p.len());</span>
-        ctx<span class="token punctuation">.</span><span class="token function">parse</span><span class="token punctuation">(</span><span class="token operator">&amp;</span>p<span class="token punctuation">.</span><span class="token function">to_string</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token punctuation">}</span>
-<span class="token punctuation">}</span></code></pre>
-<p>This runs, printing out 25.</p>
-<h2 class="atx" id="testing">Testing</h2>
-<p>Next I started going through and adding tests for the basic functionality I was looking for. I am going to add some more coverage later, but wanted to highlight some of the basic tests. <code>dup</code> is a core stack operation for forth. To start, it should panic when there is nothing in the stack:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
-<span class="token attribute attr-name">#[should_panic]</span>
-<span class="token keyword">fn</span> <span class="token function-definition function">dup_requires_argument</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"dup ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>Next it should function, by duplicating the top of the stack:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
-<span class="token keyword">fn</span> <span class="token function-definition function">dup</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"5 dup . ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">5</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">5</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>For now I just added an object to hold anything that gets sent to the <code>.</code> command. I am not entirely happy with it. Ideally I'll think I'll have system calls handled by a separate struct, so that the core can be more test-friendly. This is a consequence of working off a C program which was intended to small and complete, without any testing focus.</p>
-<p>I am adding several of these types of tests for other primitives. The other major functionality is working with new words. First I wanted to cover some of the basic error cases.</p>
-<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
-<span class="token attribute attr-name">#[should_panic]</span>
-<span class="token keyword">fn</span> <span class="token function-definition function">undefined_word</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"newword"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>Just throwing a new word should panic. Defining a new word with no body should also panic:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
-<span class="token attribute attr-name">#[should_panic]</span>
-<span class="token keyword">fn</span> <span class="token function-definition function">new_word_no_body</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        counter = Signal(range(self.max_period))
+        half_period = Signal(range(self.max_period))
 
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">": square ;"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<p>Next I used the zforth example definition as a basic test:</p>
-<pre><code class="fenced-code-block language-rust"><span class="token attribute attr-name">#[test]</span>
-<span class="token keyword">fn</span> <span class="token function-definition function">new_word</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
-    <span class="token keyword">let</span> <span class="token keyword">mut</span> ctx <span class="token operator">=</span> <span class="token class-name">Context</span><span class="token punctuation">::</span><span class="token function">new</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+        clk_en = Signal()
+        dat_en = Signal()
 
-    <span class="token comment">// new word</span>
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">": square dup * ;"</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        # Rising edge
+        with m.If(clk_en):
+            m.d.comb += self.scl.eq(counter &lt; half_period)
+        with m.Else():
+        # clock disabled
+            m.d.comb += self.scl.eq(1)
 
-    <span class="token comment">// run program with new word</span>
-    <span class="token function">run_program</span><span class="token punctuation">(</span><span class="token string">"5 square ."</span><span class="token punctuation">,</span> <span class="token operator">&amp;</span><span class="token keyword">mut</span> ctx<span class="token punctuation">)</span><span class="token punctuation">;</span>
+        # Read data from line
+        m.d.comb += self.read_valid.eq((clk_en) &amp; (counter == half_period - 2))
+        m.d.comb += self.read_data.eq(self.sda_in)
 
-    <span class="token macro property">assert!</span><span class="token punctuation">(</span>ctx<span class="token punctuation">.</span>sys_buffer<span class="token punctuation">.</span><span class="token function">pop</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span> <span class="token operator">==</span> <span class="token number">25</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
-<span class="token punctuation">}</span></code></pre>
-<h2 class="atx" id="basic-demo">Basic demo</h2>
-<p>I added most of the base words and can add new words. I put a quick egui editor, and threw some syntax highlighting on. The project can be found here: <a href="https://github.com/485angelprocess/bbforth">GitHub - 485angelprocess/bbforth: small forth interpreter implemented in rust</a></p>
-<p><img alt="forth editor" src="../Resources/forth_editor.png"></p>
-<p>Overall I'm happy with progress, it's really nice thinking about forth works internally, and the decisions that make it simple and flexible to implement from a language perspective. Next I want to finish adding primitives, which will mean doing some memory access and return stack operations. I also want to improve the editor. I might make it more of a terminal prompt, but at least want to make it easy to read and self document well.</p>
+        data = Signal()
+
+        # send data out
+        with m.If(dat_en):
+            m.d.comb += self.sda_en.eq(1)
+            m.d.comb += self.sda.eq(data)
+        with m.Else():
+            m.d.comb += self.sda.eq(1)
+            m.d.comb += self.sda_en.eq(0)
+
+        with m.FSM():
+            with m.State("Idle"):
+                m.d.comb += self.ready.eq(1)
+                with m.If(self.valid):
+
+                    m.d.sync += clk_en.eq(self.clk_en)
+                    m.d.sync += dat_en.eq(self.dat_en)
+
+                    m.d.sync += counter.eq(self.period)
+                    m.d.sync += half_period.eq(self.period &gt;&gt; 1)
+                    m.d.sync += data.eq(self.data) # get data
+                    m.next = "Send"
+                with m.Else():
+                    # Disable clock and data if no signal immediately available
+                    m.d.sync += clk_en.eq(0)
+                    m.d.sync += dat_en.eq(0)
+            with m.State("Send"):
+                m.d.sync += counter.eq(counter - 1)
+                with m.If(counter == 1):
+                    m.next = "Idle"
+
+        return m</code></pre>
+<p>The middle module handles the buffer and going from bytes to finer level I2C bits. It also handles sending start and stop conditions, as well as reading bits from the output side into bytes. Inputs and outputs are handled as two streams. The transmit buffer stream is composed of the data, a flag indicating if it is a write, and a flag indicating if it's the start of transaction. The response buffer stream includes the read data and the ack flag.</p>
+<p>With the middleware, the bus level module is fairly straightforward, just reading and writing from registers. Separating out this middleware will also be helpful for modifying my driver for different bus interfaces.</p>
+<pre><code class="fenced-code-block language-python">class I2CController(wiring.Component):
+    """
+    Bus controlled unit
+    """
+    def __init__(self):
+        super().__init__({
+            "bus": In(Bus(4, 32)),
+
+            # Control signals
+            "ctl_period": In(32),
+            "wlen": In(32),
+            "rlen": In(32),
+            "enable": Out(1),
+
+            # write /read from buffers
+            "write_data": Out(8),
+            "start": Out(1),
+            "dat_en": Out(1),
+            "write_valid": Out(1),
+            "write_ready": In(1),
+
+            "read_data": In(8),
+            "read_ack": In(1),
+            "read_valid": In(1),
+            "read_ready": Out(1)
+        })
+
+    def elaborate(self, platform):
+        m = Module()
+
+        period = Signal(12, init = 100)
+
+        m.d.comb += self.ctl_period.eq(period)
+
+        with m.If(self.bus.cyc &amp; self.bus.stb):
+            with m.If(self.bus.w_en):
+                # Write to bus
+                with m.If(self.bus.addr == I2CRegister.WRITE_DATA):
+                    m.d.comb += self.write_valid.eq(1)
+                    m.d.comb += self.bus.ack.eq(1) # Prevent lock, could wait for fifo but that's less likely case i think
+                    # Could put error flag for case where fifo is full
+                with m.Else():
+                    m.d.comb += self.bus.ack.eq(1)
+
+                with m.Switch(self.bus.addr):
+                    with m.Case(I2CRegister.ENABLE):
+                        # Enable/disable driver
+                        m.d.sync += self.enable.eq(self.bus.w_data)
+                    with m.Case(I2CRegister.WRITE_DATA):
+                        # Write data, loads to fifo
+                        m.d.comb += self.write_data.eq(self.bus.w_data)
+                        m.d.sync += self.start.eq(0) # Clear start flag
+                    with m.Case(I2CRegister.WRITE_START):
+                        # Write start flag
+                        m.d.sync += self.start.eq(self.bus.w_data)
+                    with m.Case(I2CRegister.PERIOD):
+                        # Set I2C period
+                        m.d.sync += period.eq(self.bus.w_data)
+                    with m.Case(I2CRegister.DATA_EN):
+                        m.d.sync += self.dat_en.eq(self.bus.w_data)
+                    with m.Default():
+                        pass
+            with m.Else():
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# Read
+                with m.If(self.bus.addr == I2CRegister.READ_DATA):
+                    # Read from buffer
+                    m.d.comb += self.read_ready.eq(1)
+                    m.d.comb += self.bus.ack.eq(self.read_valid)
+                with m.Else():
+                    m.d.comb += self.bus.ack.eq(1)
+
+        # Read data
+        with m.Switch(self.bus.addr):
+            with m.Case(I2CRegister.ENABLE):
+                m.d.comb += self.bus.r_data.eq(self.enable)
+            with m.Case(I2CRegister.WRITE_DATA):
+                pass
+            with m.Case(I2CRegister.WRITE_START):
+                m.d.comb += self.bus.r_data.eq(self.start)
+            with m.Case(I2CRegister.WRITE_LEN):
+                m.d.comb += self.bus.r_data.eq(self.wlen)
+            with m.Case(I2CRegister.READ_DATA):
+                # Does more than this
+                m.d.comb += self.bus.r_data.eq(self.read_data)
+            with m.Case(I2CRegister.READ_ACK):
+                m.d.comb += self.bus.r_data.eq(self.read_ack)
+            with m.Case(I2CRegister.READ_LEN):
+                m.d.comb += self.bus.r_data.eq(self.rlen)
+            with m.Case(I2CRegister.DATA_EN):
+                m.d.comb += self.bus.r_data.eq(self.dat_en)
+            with m.Case(I2CRegister.PERIOD):
+                m.d.comb += self.bus.r_data.eq(period)
+
+        return m</code></pre>
+<p>After wrapping my modules into a top-level module, I could pass my test and could also read and write from my on-board chip. Next I'm figuring out the right combination of registers to get audio out correctly from it, but that's for another time. </p>
 </article>
 </body>
 </html>
