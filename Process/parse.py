@@ -79,6 +79,8 @@ class ArticleEntry(object):
         print("Writing article {} to {}".format(self.title, dest))
         
         #print("Article {}".format(template.format(title = self.title, article = self.body)))
+        if os.path.isfile(dest):
+            os.remove(dest)
         
         with open(dest, 'x') as f:
             f.write(template.format(
@@ -154,10 +156,10 @@ class SiteBuilder(object):
     def gen_site(self):
         out = os.path.abspath(self.processed)
         
-        try:
-            shutil.rmtree(out)
-        except Exception as e:
-            print("Cannot clean output dir {}".format(e))
+        #try:
+        #    shutil.rmtree(out)
+        #except Exception as e:
+        #    print("Cannot clean output dir {}".format(e))
         
         os.makedirs(out, exist_ok = True)
         

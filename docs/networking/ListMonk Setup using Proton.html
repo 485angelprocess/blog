@@ -1,0 +1,70 @@
+<html>
+
+   <head>
+
+      <title>ListMonk Setup using Proton</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: September 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="listmonk-setup-using-proton">ListMonk Setup using Proton</h1>
+
+<p>I wanted to startup a newsletter to send out my upcoming shows/things etc.. I kind of hate putting up posts and trying to figure out what to put in them to make them show up. I could just send people who are interested the things that they want to see.</p>
+
+<p>I looked at a few options, both for SMTP servers and newsletter applications. I went with ListMonk because it seems like a simple, focused platform for running a newsletter. I decided against self-hosting the actual email server, because I didn't want any of that headache this week.</p>
+
+<p>ListMonk is setup in a docker container <a href="https://listmonk.app/#download">listmonk - Free and open source self-hosted newsletter, mailing list manager, and transactional mails</a>. The web interface runs at <code>localhost:9000</code>. It is both the web interface for administration and for users to subscrive to the newsletter. It prompts for creating an admin account on startup.</p>
+
+<p>Next we have to get the proton server, my server and my domain to all line up.</p>
+
+<p>First I used nginx proxy manager to point a subdomain of my site to the correct server port. This allows me to access listmonk page from my domain on the world wide net. This involves making a proxy host on nginx and an <code>A Record</code> with my domain name service to agree about the points. </p>
+
+<p>Next I setup Proton to act as an SMTP server. This requires the lowest paid tier of proton (about 5$ a month). In Proton-&gt;All Settings-&gt;IMAP/SMTP you can generate a token. This token is then used as the password in the SMTP tab of listmonk</p>
+
+<p>Also in listmonk I disabled individual subscriber tracking (I don't need to know), and set the sliding window limit to a low number per hour.</p>
+
+<p>With all the set, I could send test messages to protonmail emails, but test messages were silently ignored by gmail. To fix this, I had to set up SPF, DKM and DMARC fields for the custom domain in protonmail, without these fields my emails weren't trusted enough for gmail. All of these just require setting a few fields on my domain host to point to protonmail verifiers. MX could be set, but it's only for receiving, which is not the point of my newsletter.</p>
+
+<p>With these all set, I can send out a little newsletter :)</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
