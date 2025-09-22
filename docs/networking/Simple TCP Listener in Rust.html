@@ -1,0 +1,168 @@
+<html>
+
+   <head>
+
+      <title>Simple TCP Listener in Rust</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: September 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="simple-tcp-listener-in-rust">Simple TCP Listener in Rust</h1>
+
+<p>For a project I'm working on I needed to implement some level of inter process communication. I have a server which should be able receive functions from multiple clients (remote or local). TCP feels like a logical conclusion for this application.</p>
+
+<p>The basic TCP server route looks like this:</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">use</span> <span class="token namespace">std<span class="token punctuation">::</span></span>thread<span class="token punctuation">;</span>
+
+<span class="token keyword">use</span> <span class="token namespace">std<span class="token punctuation">::</span></span>io<span class="token punctuation">{</span><span class="token class-name">TcpListener</span><span class="token punctuation">,</span> <span class="token class-name">TcpStream</span><span class="token punctuation">,</span> <span class="token class-name">Shutdown</span><span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+
+
+<span class="token keyword">fn</span> <span class="token function-definition function">handle_client</span><span class="token punctuation">(</span><span class="token keyword">mut</span> stream<span class="token punctuation">:</span> <span class="token class-name">TcpStream</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> <span class="token keyword">mut</span> data <span class="token operator">=</span> <span class="token punctuation">[</span><span class="token number">0</span> <span class="token keyword">as</span> <span class="token keyword">u8</span><span class="token punctuation">;</span> <span class="token number">256</span><span class="token punctuation">]</span><span class="token punctuation">;</span> <span class="token comment">// Data buffer</span>
+
+    <span class="token keyword">while</span> <span class="token keyword">match</span> stream<span class="token punctuation">.</span><span class="token function">read</span><span class="token punctuation">(</span><span class="token operator">&amp;</span><span class="token keyword">mut</span> data<span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token class-name">Ok</span><span class="token punctuation">(</span>size<span class="token punctuation">)</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token keyword">if</span> size <span class="token operator">&gt;</span> <span class="token number">0</span><span class="token punctuation">{</span>
+
+                <span class="token comment">// Read in data/response</span>
+
+                <span class="token comment">//...</span>
+
+            <span class="token punctuation">}</span>
+
+            <span class="token boolean">true</span> <span class="token comment">// Continue loop</span>
+
+        <span class="token punctuation">}</span><span class="token punctuation">,</span>
+
+        <span class="token class-name">Err</span><span class="token punctuation">(</span>e<span class="token punctuation">)</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token macro property">println!</span><span class="token punctuation">(</span><span class="token string">"Error: {:?}"</span><span class="token punctuation">,</span> e<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            stream<span class="token punctuation">.</span><span class="token function">shutdown</span><span class="token punctuation">(</span><span class="token class-name">Shutdown</span><span class="token punctuation">::</span><span class="token class-name">Both</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+            <span class="token boolean">false</span><span class="token punctuation">;</span> <span class="token comment">// Exit loop</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">fn</span> <span class="token function-definition function">connect</span><span class="token punctuation">(</span>port<span class="token punctuation">:</span> <span class="token keyword">usize</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token keyword">let</span> listener <span class="token operator">=</span> <span class="token class-name">TcpListener</span><span class="token punctuation">::</span><span class="token function">bind</span><span class="token punctuation">(</span><span class="token macro property">format!</span><span class="token punctuation">(</span><span class="token string">"127.0.0.1:{port}"</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">unwrap</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+    <span class="token keyword">for</span> stream <span class="token keyword">in</span> listener<span class="token punctuation">.</span><span class="token function">incoming</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+        <span class="token class-name">Ok</span><span class="token punctuation">(</span>stream<span class="token punctuation">)</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token comment">// Got new connection</span>
+
+            <span class="token namespace">std<span class="token punctuation">::</span>thread<span class="token punctuation">::</span></span><span class="token function">spawn</span><span class="token punctuation">(</span><span class="token closure-params"><span class="token closure-punctuation punctuation">|</span><span class="token closure-punctuation punctuation">|</span></span><span class="token punctuation">{</span><span class="token function">handle_client</span><span class="token punctuation">(</span>stream<span class="token punctuation">)</span><span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+        <span class="token class-name">Err</span><span class="token punctuation">(</span>e<span class="token punctuation">)</span> <span class="token operator">=&gt;</span> <span class="token punctuation">{</span>
+
+            <span class="token comment">// Error on connection</span>
+
+            <span class="token macro property">println!</span><span class="token punctuation">(</span><span class="token string">"Connection error: {}"</span><span class="token punctuation">,</span> e<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+        <span class="token punctuation">}</span>
+
+    <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">fn</span> <span class="token function-definition function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+    <span class="token function">connect</span><span class="token punctuation">(</span><span class="token number">9000</span><span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// Start server on port 9000</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>This can handle multiple connections by placing each connection in a thread. Data is received in buffers. For now I'm controlling the applications on both sides, so I'm using a custom protocol. At some point I'll add some ability to interoperate with a browser by handling http. </p>
+
+<p>Since I want a functional interface, I wanted to define what type of requests the server would get. Most requests will be write-only, with some read only requests.</p>
+
+<pre><code class="fenced-code-block language-rust"><span class="token keyword">enum</span> <span class="token type-definition class-name">Value</span><span class="token punctuation">{</span>
+
+    <span class="token class-name">Int</span><span class="token punctuation">(</span><span class="token keyword">isize</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+    <span class="token class-name">Float</span><span class="token punctuation">(</span><span class="token keyword">f64</span><span class="token punctuation">)</span><span class="token punctuation">,</span>
+
+    <span class="token class-name">Str</span><span class="token punctuation">(</span><span class="token class-name">String</span><span class="token punctuation">)</span>    
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">struct</span> <span class="token type-definition class-name">Request</span><span class="token punctuation">{</span>
+
+    label<span class="token punctuation">:</span> <span class="token class-name">String</span><span class="token punctuation">,</span>
+
+    thread_index<span class="token punctuation">:</span> <span class="token keyword">usize</span><span class="token punctuation">,</span>
+
+    args<span class="token punctuation">:</span> <span class="token class-name">Vec</span><span class="token operator">&lt;</span><span class="token class-name">Value</span><span class="token operator">&gt;</span>
+
+<span class="token punctuation">}</span></code></pre>
+
+<p>Every request is a string label which points to the function I want to run. It also has a thread index so that read requests can go back to the correct client. Functions expect some number of types arguments, which I limited to simplify function writing.</p>
+
+<p>Now I just use some method to go from bytes to a request and save the thread index. For my custom protocol I made this a simple parser. It's unimportant for now. To share the results back to the core server application, I use an <code>Arc&lt;Mutex&lt;Vec&lt;Request&gt;&gt;&gt;</code> to share a buffer of requests.</p>
+
+<p>Server requests can add to the buffer, and at each run of the server's main loop it'll go through all pending requests. For my application, the <code>connect</code> function was also moved to another thread, as I want to have a gui occupying the main thread with minimal other things going on.</p>
+
+<p>Next I'm writing an API which I can use to read and write from my server. I may use <code>warp</code> or check out more of <a href="https://rust-api.dev/docs/part-1/introduction/">rust-api.dev</a>, or just make a simple one for now.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
