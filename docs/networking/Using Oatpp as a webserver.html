@@ -1,0 +1,420 @@
+<html>
+
+   <head>
+
+      <title>Using Oatpp as a webserver</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: October 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="using-oatpp-as-a-webserver">Using Oatpp as a webserver</h1>
+
+<p><a href="https://oatpp.io/">Oat++</a> is a open source C++ web framework I wanted to check out. It is a small framework aimed for embedded devices. I want to start by just getting a basic project up and seeing some of the features.</p>
+
+<h2 class="atx" id="getting-things-running">Getting things running</h2>
+
+<p>I followed the step-by-step guide, starting with just a minimal port connection.</p>
+
+<p>In <code>Main.cpp</code></p>
+
+<pre><code class="fenced-code-block language-cpp">include <span class="token string">"oatpp/web/server/HttpConnectionHandler.hpp"</span>
+
+
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/network/Server.hpp"</span></span>
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/network/tcp/server/ConnectionProvider.hpp"</span></span>
+
+
+
+<span class="token comment">/* Oat pp basic server */</span>
+
+<span class="token comment">/* https://oatpp.io/docs/start/step-by-step/#api-low-level-components-overview */</span>
+
+
+
+<span class="token keyword">void</span> <span class="token function">run</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+  <span class="token comment">/**
+
+    Runs server
+
+  **/</span>
+
+  <span class="token keyword">auto</span> router <span class="token operator">=</span> oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">HttpRouter</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token keyword">auto</span> connectionHandler <span class="token operator">=</span> oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">HttpConnectionHandler</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span>router<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token keyword">auto</span> connectionProvider <span class="token operator">=</span> oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>tcp<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">ConnectionProvider</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span><span class="token punctuation">{</span>
+
+                                          <span class="token string">"localhost"</span><span class="token punctuation">,</span> <span class="token number">8010</span><span class="token punctuation">,</span> oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>Address<span class="token double-colon punctuation">::</span>IP_4
+
+                                                               <span class="token punctuation">}</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>Server <span class="token function">server</span><span class="token punctuation">(</span>connectionProvider<span class="token punctuation">,</span> connectionHandler<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token function">OATPP_LOGi</span><span class="token punctuation">(</span><span class="token string">"noise_app"</span><span class="token punctuation">,</span> <span class="token string">"Server running on port {}"</span><span class="token punctuation">,</span> connectionProvider<span class="token operator">-&gt;</span><span class="token function">getProperty</span><span class="token punctuation">(</span><span class="token string">"port"</span><span class="token punctuation">)</span><span class="token punctuation">.</span><span class="token function">toString</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  server<span class="token punctuation">.</span><span class="token function">run</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span>
+
+
+
+<span class="token keyword">int</span> <span class="token function">main</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">{</span>
+
+
+
+  oatpp<span class="token double-colon punctuation">::</span><span class="token class-name">Environment</span><span class="token double-colon punctuation">::</span><span class="token function">init</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token function">run</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  oatpp<span class="token double-colon punctuation">::</span><span class="token class-name">Environment</span><span class="token double-colon punctuation">::</span><span class="token function">destroy</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token keyword">return</span> <span class="token number">0</span><span class="token punctuation">;</span>
+
+<span class="token punctuation">}</span>
+
+
+
+</code></pre>
+
+<p>I had to modify this slightly from the web pages tutorial since Oatpp has updated a bit. This enters the oatpp environment, creates an http router on a port and launches the server.</p>
+
+<p>The <code>CMakeLists.txt</code> file:</p>
+
+<pre><code class="fenced-code-block language-cpp"><span class="token function">cmake_minimum_required</span><span class="token punctuation">(</span>VERSION <span class="token number">3.20</span><span class="token punctuation">)</span>
+
+
+
+<span class="token function">set</span><span class="token punctuation">(</span>project_name noise<span class="token operator">-</span>game<span class="token punctuation">)</span>
+
+
+
+<span class="token function">project</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token punctuation">)</span>
+
+
+
+<span class="token function">set</span><span class="token punctuation">(</span>CMAKE_CXX_STANDARD <span class="token number">17</span><span class="token punctuation">)</span>
+
+
+
+<span class="token macro property"><span class="token directive-hash">#</span> <span class="token expression">Libraries</span></span>
+
+<span class="token function">add_library</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib
+
+    src<span class="token operator">/</span>AppComponent<span class="token punctuation">.</span>hpp
+
+<span class="token punctuation">)</span>
+
+
+
+<span class="token function">find_package</span><span class="token punctuation">(</span>oatpp <span class="token number">1.4</span><span class="token punctuation">.</span><span class="token number">0</span> REQUIRED<span class="token punctuation">)</span>
+
+
+
+<span class="token function">target_link_libraries</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib
+
+    PUBLIC oatpp<span class="token double-colon punctuation">::</span>oatpp
+
+    PUBLIC oatpp<span class="token double-colon punctuation">::</span>oatpp<span class="token operator">-</span>test
+
+<span class="token punctuation">)</span>
+
+
+
+<span class="token function">target_include_directories</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib PUBLIC src<span class="token punctuation">)</span>
+
+
+
+## Add exectuables
+
+<span class="token function">message</span><span class="token punctuation">(</span>STATIC <span class="token string">"Building ${project_name}-exe"</span><span class="token punctuation">)</span>
+
+<span class="token function">add_executable</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>exe
+
+    src<span class="token operator">/</span>Main<span class="token punctuation">.</span>cpp<span class="token punctuation">)</span>
+
+<span class="token function">target_link_libraries</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>exe $<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib<span class="token punctuation">)</span>
+
+<span class="token function">add_dependencies</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>exe $<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib<span class="token punctuation">)</span>
+
+
+
+<span class="token function">set_target_properties</span><span class="token punctuation">(</span>$<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>lib $<span class="token punctuation">{</span>project_name<span class="token punctuation">}</span><span class="token operator">-</span>exe PROPERTIES
+
+        CXX_STANDARD <span class="token number">17</span>
+
+        CXX_EXTENSIONS OFF
+
+        CXX_STANDARD_REQUIRED ON
+
+<span class="token punctuation">)</span>
+
+
+
+
+
+</code></pre>
+
+<h2 class="atx" id="handler">Handler</h2>
+
+<p>This won't do anything yet. First I added a handler:</p>
+
+<pre><code class="fenced-code-block language-cpp"><span class="token keyword">class</span> <span class="token class-name">Handler</span><span class="token operator">:</span> <span class="token base-clause"><span class="token keyword">public</span> oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">HttpRequestHandler</span></span><span class="token punctuation">{</span>
+
+  <span class="token keyword">public</span><span class="token operator">:</span>
+
+    <span class="token comment">/**
+
+     * Handle incoming request and return outgoing response.
+
+     */</span>
+
+     std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>OutgoingResponse<span class="token operator">&gt;</span> <span class="token function">handle</span><span class="token punctuation">(</span><span class="token keyword">const</span> std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>IncomingRequest<span class="token operator">&gt;</span><span class="token operator">&amp;</span> request<span class="token punctuation">)</span> <span class="token keyword">override</span><span class="token punctuation">{</span>
+
+       <span class="token keyword">return</span> <span class="token class-name">ResponseFactory</span><span class="token double-colon punctuation">::</span><span class="token function">createResponse</span><span class="token punctuation">(</span>Status<span class="token double-colon punctuation">::</span>CODE_200<span class="token punctuation">,</span> <span class="token string">"Hello World!"</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+     <span class="token punctuation">}</span>
+
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+</code></pre>
+
+<p>Then linked this to the router:</p>
+
+<pre><code class="fenced-code-block language-cpp"><span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span> declare router
+
+
+
+<span class="token comment">// Route GET</span>
+
+router<span class="token operator">-&gt;</span><span class="token function">route</span><span class="token punctuation">(</span><span class="token string">"GET"</span><span class="token punctuation">,</span> <span class="token string">"/hello"</span><span class="token punctuation">,</span> std<span class="token double-colon punctuation">::</span><span class="token generic-function"><span class="token function">make_shared</span><span class="token generic class-name"><span class="token operator">&lt;</span>Handler<span class="token operator">&gt;</span></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+
+
+<span class="token punctuation">.</span><span class="token punctuation">.</span><span class="token punctuation">.</span> Create connection handler</code></pre>
+
+<p>Using curl locally replies with hello world:</p>
+
+<pre><code class="fenced-code-block language-bash">$ curl http://localhost:8010/hello
+
+Hello World</code></pre>
+
+<p>Now I had an issue getting curl to run with it listed as localhost from a different computer. I believe this is an issue with my local network's DNS setup but setting oat to run from the local ip allowed it to run across the network.</p>
+
+<h2 class="atx" id="retrieving-structured-data">Retrieving structured data</h2>
+
+<p>While it's nice that I can get basic text, I would like JSON data. Oat uses data transfer objects, which is just packaging data in a json. This is just server state data that can be easily read/written to by a client application.</p>
+
+<p>To make adding more components easier, I first created <code>AppComponent.cpp</code> to hold application components, which makes it easier to create and manage them. This is at the suggestion of the Oatpp documentation which provides a template project structure.</p>
+
+<p><code>AppComponent.cpp</code>:</p>
+
+<pre><code class="fenced-code-block language-cpp"><span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">pragma</span> <span class="token expression">once</span></span>
+
+
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/json/ObjectMapper.hpp"</span></span>
+
+
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/web/server/HttpConnectionHandler.hpp"</span></span>
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/network/tcp/server/ConnectionProvider.hpp"</span></span>
+
+
+
+<span class="token macro property"><span class="token directive-hash">#</span><span class="token directive keyword">include</span> <span class="token string">"oatpp/macro/component.hpp"</span></span>
+
+
+
+<span class="token comment">/**
+
+ * Class which creates and hold Application components and registers
+
+ * Order of component initialization is from top to bottom
+
+ */</span>
+
+<span class="token keyword">class</span> <span class="token class-name">AppComponent</span><span class="token punctuation">{</span>
+
+<span class="token keyword">public</span><span class="token operator">:</span>
+
+    <span class="token comment">/**
+
+     * Create connectionprovider component which listens on the port
+
+     */</span>
+
+    <span class="token function">OATPP_CREATE_COMPONENT</span><span class="token punctuation">(</span>std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>ServerConnectionProvider<span class="token operator">&gt;</span><span class="token punctuation">,</span> serverConnectionProvider<span class="token punctuation">)</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token operator">&gt;</span>
+
+      <span class="token keyword">return</span> oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>tcp<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">ConnectionProvider</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span><span class="token punctuation">{</span><span class="token string">"localhost"</span><span class="token punctuation">,</span> <span class="token number">8010</span><span class="token punctuation">,</span> oatpp<span class="token double-colon punctuation">::</span>networ<span class="token operator">&gt;</span>
+
+    <span class="token punctuation">}</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+   <span class="token comment">/**
+
+   *  Create Router component
+
+   */</span>
+
+  <span class="token function">OATPP_CREATE_COMPONENT</span><span class="token punctuation">(</span>std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span>HttpRouter<span class="token operator">&gt;</span><span class="token punctuation">,</span> httpRouter<span class="token punctuation">)</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token punctuation">]</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">return</span> oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">HttpRouter</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token punctuation">}</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token comment">/**
+
+   *  Create ConnectionHandler component which uses Router component to route requests
+
+   */</span>
+
+  <span class="token function">OATPP_CREATE_COMPONENT</span><span class="token punctuation">(</span>std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>network<span class="token double-colon punctuation">::</span>ConnectionHandler<span class="token operator">&gt;</span><span class="token punctuation">,</span> serverConnectionHandler<span class="token punctuation">)</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token punctuation">]</span> <span class="token punctuation">{</span>
+
+    <span class="token function">OATPP_COMPONENT</span><span class="token punctuation">(</span>std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span>HttpRouter<span class="token operator">&gt;</span><span class="token punctuation">,</span> router<span class="token punctuation">)</span><span class="token punctuation">;</span> <span class="token comment">// get Router component</span>
+
+    <span class="token keyword">return</span> oatpp<span class="token double-colon punctuation">::</span>web<span class="token double-colon punctuation">::</span>server<span class="token double-colon punctuation">::</span><span class="token class-name">HttpConnectionHandler</span><span class="token double-colon punctuation">::</span><span class="token function">createShared</span><span class="token punctuation">(</span>router<span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+  <span class="token punctuation">}</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+  <span class="token comment">/**
+
+   *  Create ObjectMapper component to serialize/deserialize DTOs in Contoller's API
+
+   */</span>
+
+  <span class="token function">OATPP_CREATE_COMPONENT</span><span class="token punctuation">(</span>std<span class="token double-colon punctuation">::</span>shared_ptr<span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>data<span class="token double-colon punctuation">::</span>mapping<span class="token double-colon punctuation">::</span>ObjectMapper<span class="token operator">&gt;</span><span class="token punctuation">,</span> apiObjectMapper<span class="token punctuation">)</span><span class="token punctuation">(</span><span class="token punctuation">[</span><span class="token punctuation">]</span> <span class="token punctuation">{</span>
+
+    <span class="token keyword">auto</span> json <span class="token operator">=</span> std<span class="token double-colon punctuation">::</span><span class="token generic-function"><span class="token function">make_shared</span><span class="token generic class-name"><span class="token operator">&lt;</span>oatpp<span class="token double-colon punctuation">::</span>json<span class="token double-colon punctuation">::</span>ObjectMapper<span class="token operator">&gt;</span></span></span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+    <span class="token keyword">return</span> json<span class="token punctuation">;</span>
+
+  <span class="token punctuation">}</span><span class="token punctuation">(</span><span class="token punctuation">)</span><span class="token punctuation">)</span><span class="token punctuation">;</span>
+
+
+
+<span class="token punctuation">}</span><span class="token punctuation">;</span>
+
+</code></pre>
+
+<p>This has some minor changes from the walkthrough to make it match the newest updates. </p>
+
+<p>Next I created a DTO to hold some data. Oat makes this a kind of macro generation. To me, this seems a bit kludgy for C++, but it does do the job. Trying to smush JSON into C++ is going to be a bit wonky no matter what, so maybe this is the most elegant with low overhead.</p>
+
+<pre><code class="fenced-code-block language-c++">#include OATPP_CODEGEN_BEGIN(DTO)
+
+
+
+/**
+
+  * Message Data-Transfer-Object
+
+  */
+
+class MessageDto: public oatpp::DTO{
+
+  DTO_INIT(MessageDto, DTO /* Extends*/)
+
+
+
+  DTO_FIELD(Int32, statusCode);
+
+  DTO_FIELD(String, message);
+
+};
+
+
+
+#include OATPP_CODEGEN_END(DTO)</code></pre>
+
+<p>I can now go back in the editor and have it send the DTO instead of just a bare string.</p>
+
+<p>The <code>handle</code> method of <code>Handler</code> is now:</p>
+
+<pre><code class="fenced-code-block language-c++">std::shared_ptr&lt;OutgoingResponse&gt; handle(const std::shared_ptr&lt;IncomingRequest&gt;&amp; request) override{
+
+    auto message = MessageDto::createShared();
+
+    message-&gt;statusCode = 1024;
+
+    message-&gt;message = "Hello DTO!";
+
+    return ResponseFactory::createResponse(Status::CODE_200, message, m_objectMapper);
+
+}</code></pre>
+
+<p>This now gives a json response:</p>
+
+<pre><code class="fenced-code-block language-bash">$ curl http://localhost:8010/hello
+
+{"statusCode":1024,"message":"Hello DTO!"}</code></pre>
+
+<p>I'm going to explore a bit more into Oatpp, but this was a pretty decent look at getting up and running. It seems like a good framework for embedded devices, not super intense to set up, and claims to be very performant. It's also nicely self-contained so doesn't create a headache of dependencies. The testing framework is something I want to look at some more of as well.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
