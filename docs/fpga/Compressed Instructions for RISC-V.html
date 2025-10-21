@@ -1,0 +1,266 @@
+<html>
+
+   <head>
+
+      <title>Compressed Instructions for RISC-V</title>
+
+      
+
+      <link rel="stylesheet" href="../md_style.css">
+
+	  <link rel="stylesheet" href="../article_style.css">
+
+	  
+
+	  
+
+   </head>
+
+    
+
+    <div id="navigation_block">
+
+    <h2 class="nav"><a href="../index.html">home</a></h2>
+
+    </div>
+
+    
+
+    <div id="article">
+
+    <div id="date_block">
+
+    <p>From: October 2025</p>
+
+    </div>
+
+    
+
+      <article class="markdown-body"><h1 class="atx" id="compressed-instructions-for-risc-v">Compressed Instructions for RISC-V</h1>
+
+<p>I wanted to add compressed instructions into RISC-V softcore. RISC-V compressed instructions pack common patterns into 16 bits to reduce the number of reads and storage required for a program. <a href="https://www2.eecs.berkeley.edu/Pubs/TechRpts/2015/EECS-2015-209.pdf">Here</a> is a good outline of how they are set up.</p>
+
+<p>For my initial approach, I decided to add a step prior to my already written fetch module which checks for decompressed instructions, and provides only uncompressed instructions to the fetch module. From the fetch module's perspective, there is no change in its behvior (Well, I actually had to rewrite a little bit due to assumptions I made about the program counter). An alternate approach would be to combine the fetch and decompress modules, but that would overcomplicate the design.</p>
+
+<p>The overall decompression module reads the next 32 bits from memory and stores that in a buffer. It then checks if the lower 16 bits are compressed, which is indicated by the lowest 2 bits being less than 3. If it is compressed, it maps the bits to a full 32 bits and shifts the buffer down. If it isn't, the buffer is shifted all 32 bits.</p>
+
+<p>The memory in and out are handled by stream ports which provide backpressure control.</p>
+
+<table>
+
+<thead>
+
+<tr>
+
+<th>Port</th>
+
+<th>Description</th>
+
+</tr>
+
+</thead>
+
+<tbody><tr>
+
+<td>Consume</td>
+
+<td>Input stream, 32 bit wide data with <code>valid</code>&nbsp;input signal and <code>ready</code>&nbsp;backpressure signal.</td>
+
+</tr>
+
+<tr>
+
+<td>Produce</td>
+
+<td>Output stream, 32 bit wide uncompressed instructions, <code>valid</code>&nbsp;output signal, and with <code>ready</code>&nbsp;backpressure.</td>
+
+</tr>
+
+<tr>
+
+<td>Error</td>
+
+<td>Flag&nbsp; that indicates an unknown opcode.</td>
+
+</tr>
+
+</tbody></table>
+
+<p>I wrote the buffer as a submodule, which handles shifting in data:</p>
+
+<pre><code class="fenced-code-block language-python">class DecompressBuffer(wiring.Component):
+
+    def __init__(self):
+
+        super().__init__({
+
+            "consume": In(Stream(32)),
+
+            "data": Out(32),
+
+            "valid": Out(2),
+
+            "long": In(1),
+
+            "short": In(1) 
+
+        })
+
+
+
+    def elaborate(self, platform):
+
+        m = Module()
+
+
+
+        buffer = Signal(32)
+
+        buffer_valid = Signal(2)
+
+
+
+        m.d.comb += self.consume.ready.eq(buffer_valid == 0)
+
+
+
+        # Read in data
+
+        with m.If(self.consume.ready &amp; self.consume.valid):
+
+            # Read in one word from memory
+
+            m.d.sync += buffer.eq(self.consume.data)
+
+            m.d.sync += buffer_valid.eq(0b11)
+
+
+
+        with m.If(self.valid == 1): # Requires 16 bits
+
+            with m.If(buffer_valid &gt; 0):
+
+                # Shift in 16 bits
+
+                m.d.sync += self.data.eq((buffer &lt;&lt; 16) + self.data)
+
+                m.d.sync += buffer.eq(buffer &gt;&gt; 16)
+
+                m.d.sync += self.valid.eq(0b11)
+
+                m.d.sync += buffer_valid.eq(buffer_valid &gt;&gt; 1)
+
+        with m.Elif(self.valid == 0): # Requires 32 bits
+
+            with m.If(buffer_valid == 0b1): # 16 bitrs available
+
+                # Shift in 16 bits
+
+                m.d.sync += self.data.eq(buffer &amp; 0xFFFF)
+
+                m.d.sync += buffer.eq(0)
+
+                m.d.sync += self.valid.eq(0b11)
+
+                m.d.sync += buffer_valid.eq(0)
+
+            with m.If(buffer_valid == 0b11): # 32 bits available
+
+                # Shift in 32 bits
+
+                m.d.sync += self.data.eq(buffer)
+
+                m.d.sync += buffer.eq(0)
+
+                m.d.sync += self.valid.eq(0b11)
+
+                m.d.sync += buffer_valid.eq(0)
+
+
+
+        with m.If(self.short):
+
+            # Read lower 16 bits
+
+            m.d.sync += self.data.eq(self.data &gt;&gt; 16)
+
+            m.d.sync += self.valid.eq(self.valid &gt;&gt; 1)
+
+
+
+        with m.If(self.long):
+
+            # Read entire word
+
+            m.d.sync += self.valid.eq(0)
+
+
+
+        return m</code></pre>
+
+<p>It takes one extra cycle to load data in, which I may fix later. But this is not my bottleneck in the pipeline right now, so I'm leaving it. This submodules uses the <code>long</code> and <code>short</code> signals to shift 32 and 16 bit words respectively.</p>
+
+<p>Next I wanted to map the compressed instructions to decompressed instructions. For this part, I wanted to play around with how well I could write a wrapper which reads an easy-to-write config file. A large motivation for this is that I didn't want to do too much manual bit-mapping. I also have just been writing a variety of Forth and Lisp parsers, so it's been on my mind.</p>
+
+<p>My goal was to define compressed instructions in a text file:</p>
+
+<pre><code class="fenced-code-block">:c.lw
+
+010 | offset[5:3] | rs1' | offset[2|6] | rd' | 00
+
+offset[11:0] | rs1 | 010 | rd | 00000 | 11
+
+
+
+:c.j
+
+101 | offset[11|4|9:8|10|6|7|3:1|5]  | 01
+
+offset[20|10:1|11|19:12] | rd | 11011 | 11
+
+
+
+:c.sw
+
+110 | offset[5:3] | rs1' | offset[2|6] | rs2' | 00
+
+offset[11:5] | rs2 | rs1 | 010 | offset[4:0] | 01000 | 11</code></pre>
+
+<p>Each instruction has a name, and then the compressed definition and the uncompressed definition. I wanted it to be easy to add instructions without having a complex bit mapping module. Now, I could see the beautiful patterns defined in the RISC-V instruction set and write a simple optimized module, but today I did not want to do that. I wanted to just write the definition and pre-process my mappings.</p>
+
+<p>I can create a data sctructure which should have decent performance for the amount of instructions I need to define. When I run into timing issues later, I want to be able to modify my module with additional optimizations, but still keep the same definitions file. But I don't have to solve too much of that problem yet.</p>
+
+<p>I can parse each definition into three types:</p>
+
+<ul>
+
+<li><p>Constant - a series of just 1s and 0s are constants with an associated value and size.</p>
+
+</li>
+
+<li><p>Registers - There are few different register names, <code>rs1'</code> indicates an compressed register definition, and <code>rs1</code> is an uncompressed definition.</p>
+
+</li>
+
+<li><p>Bit maps - These are immediate arguments in the instruction, which are defined by lists of ranges of bits. </p>
+
+</li>
+
+</ul>
+
+<p>I can preprocess these tokens to create a decompression module. For instance, the constants on the compressed size are matched to incoming instructions to find which maps to use. Constants on the decompressed size are set in the outgoing instruction. Each instruction has associated bit map which aligns labeled bits in the compressed to their location in the outgoing module. </p>
+
+<p>For compressed registers, I use a a small optimization to prevent redundant gates. Compressed registers are only found in two positions in the compressed instructions. The three bit compressed register is mapped by: <code>r = r' + 8</code>, instead of locating the gates for this inside each instructions label, I add some signals in the module which always map these locations, and are selectively used.</p>
+
+</article>
+
+</body>
+
+
+   </div>
+
+   
+
+   </body>
+
+</html>
